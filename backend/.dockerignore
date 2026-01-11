@@ -1,0 +1,8 @@
+tmp
+bin
+.git
+.gitignore
+.env
+.env.local
+__debug_bin
+debug

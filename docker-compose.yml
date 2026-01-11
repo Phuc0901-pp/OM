@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # 1. Backend Service
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: solar_om_backend
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=yourpassword
+      - DB_NAME=solar_om
+      - DB_PORT=5432
+      - MINIO_ENDPOINT=minio:9000
+    depends_on:
+      - postgres
+      - minio
+    networks:
+      - solar_network
+
+  # 2. Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: solar_om_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - solar_network
+
+  # 3. Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: solar_om_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: solar_om
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - solar_network
+
+  # 4. Storage Service (MinIO)
+  minio:
+    image: minio/minio
+    container_name: solar_om_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - solar_network
+
+networks:
+  solar_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:

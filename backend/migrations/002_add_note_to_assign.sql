@@ -1,0 +1,1 @@
+ALTER TABLE assign ADD COLUMN note TEXT DEFAULT '';
