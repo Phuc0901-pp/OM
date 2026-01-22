@@ -17,7 +17,12 @@ export const getStatusBadge = (status: TaskStatus): StatusBadge => {
     return STATUS_BADGES[status];
 };
 
+// Update TaskDetail interface for the helper
 export interface TaskDetail {
+    status_approve?: number;
+    status_reject?: number;
+    status_submit?: number;
+    status_work?: number;
     check: number;
     accept: number;
 }
@@ -25,6 +30,13 @@ export interface TaskDetail {
 export const determineTaskStatus = (taskDetail: TaskDetail | undefined): TaskStatus => {
     if (!taskDetail) return 'pending';
 
+    // New logic based on status_ fields
+    if (taskDetail.status_approve === 1) return 'approved';
+    if (taskDetail.status_reject === 1) return 'rejected';
+    if (taskDetail.status_submit === 1) return 'submitted';
+    if (taskDetail.status_work === 1) return 'in_progress';
+
+    // Fallback to old logic if new fields are missing (though they should be present now)
     if (taskDetail.accept === 1) return 'approved';
     if (taskDetail.accept === -1) return 'rejected';
     if (taskDetail.check === 3) return 'submitted';

@@ -1,14 +1,12 @@
 package postgres
 
 import (
-	"encoding/json"
 	"errors"
-    "fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 	"github.com/phuc/cmms-backend/internal/domain"
+	"gorm.io/gorm"
 )
 
 // Struct definition remains same
@@ -68,6 +66,14 @@ func (r *projectRepository) GetChildCategoriesByMainID(mainID uuid.UUID) ([]doma
 	return categories, nil
 }
 
+func (r *projectRepository) GetChildCategoriesByStationID(stationID uuid.UUID) ([]domain.ChildCategory, error) {
+	var categories []domain.ChildCategory
+	if err := r.db.Where("id_station = ?", stationID).Find(&categories).Error; err != nil {
+		return nil, err
+	}
+	return categories, nil
+}
+
 // func (r *projectRepository) GetCharacteristicsByMainID(mainID uuid.UUID) ([]domain.ProjectCharacteristic, error) {
 // 	return nil, nil // API deprecated due to schema change
 // }
@@ -116,170 +122,8 @@ func (r *projectRepository) CreateAssign(a *domain.Assign) error {
 			}
 		}
 
-        // 2. Fetch Project Characteristics for Structure
-        var char domain.ProjectCharacteristic
-        var invDetails []int
-        // areaName removed as it is handled per child
-
-        // Attempt to fetch characteristics
-        if err := tx.Where("id_project = ?", a.ProjectID).First(&char).Error; err == nil {
-             // Parse Inverter Details
-             if char.InverterDetails != nil {
-                 json.Unmarshal(char.InverterDetails, &invDetails)
-             }
-        }
-
-		// 3. Generate Task Details based on DataWork 
-		dataWork := a.DataWork
-		if dataWork == nil {
-			return nil
-		}
-
-		mainCats, ok := dataWork["main_categories"].([]interface{})
-		if !ok { return nil }
-
-		var allTasks []domain.TaskDetail
-
-		for _, mc := range mainCats {
-			mcMap, ok := mc.(map[string]interface{})
-			if !ok { continue }
-
-			mainName, _ := mcMap["name"].(string)
-
-			children, ok := mcMap["child_categories"].([]interface{})
-			if !ok { continue }
-
-			for _, child := range children {
-				childMap, ok := child.(map[string]interface{})
-				if !ok { continue }
-
-				// Get ID
-				childIDStr, ok := childMap["id"].(string)
-				if !ok { continue }
-				childID, err := uuid.Parse(childIDStr)
-				if err != nil { continue }
-
-				// Get Quantity (Fallback)
-				qtyStr, ok := childMap["quantity"].(string)
-				if !ok { qtyStr = "0" }
-				var qty int
-				if _, err := fmt.Sscanf(qtyStr, "%d", &qty); err != nil {
-					qty = 0
-				}
-                
-                // Get Child Name
-                childName, _ := childMap["name"].(string)
-
-                // Check Database if this child requires inverter (Trust DB over Frontend)
-                var childInfo struct {
-                    RequiresInverter bool   `gorm:"column:requires_inverter"`
-                    ColumnKey        string `gorm:"column:column_key"`
-                }
-                if err := tx.Model(&domain.ChildCategory{}).Select("requires_inverter, column_key").Where("id = ?", childID).Scan(&childInfo).Error; err != nil {
-                    continue
-                }
-                
-                // Determine Area Name (e.g., Mái vs Nhà máy)
-                specificAreaName := "Khu vực"
-                var ccData map[string]interface{}
-                if char.ChildCategoryData != nil {
-                     json.Unmarshal(char.ChildCategoryData, &ccData)
-                }
-                
-                if childInfo.ColumnKey != "" && ccData != nil {
-                     if spec, ok := ccData[childInfo.ColumnKey].(map[string]interface{}); ok {
-                         if name, ok := spec["area_name"].(string); ok && name != "" {
-                             specificAreaName = name
-                         }
-                     }
-                }
-
-				if qty > 0 || childInfo.RequiresInverter {
-                    // If Requires Inverter AND we have defined structure, use it!
-                    if childInfo.RequiresInverter && len(invDetails) > 0 {
-                         for idx, count := range invDetails {
-                             if count <= 0 { continue }
-                             sName := fmt.Sprintf("%s %d", specificAreaName, idx+1)
-                             for j := 1; j <= count; j++ {
-                                 invName := fmt.Sprintf("Inverter %d", j)
-                                 
-                                 allTasks = append(allTasks, domain.TaskDetail{
-                                    ID:              uuid.New(),
-                                    AssignID:        a.ID,
-                                    ChildCategoryID: childID,
-                                    StationName:     &sName,
-                                    InverterName:    &invName,
-                                    Status:          "pending",
-                                 })
-                             }
-                         }
-                    } else {
-                        // Standard / Legacy Logic
-                        isNested := domain.Rules.IsNestedCategory(mainName, childName)
-                        
-                        var globalSpecs map[string]interface{}
-                        if gs, ok := a.DataWork["specs"].(map[string]interface{}); ok {
-                            globalSpecs = gs
-                        }
-                        stationQty, inverterQty := domain.Rules.ParseSpecs(childMap, globalSpecs)
-
-                        if isNested && inverterQty == 0 {
-                            inverterQty = qty
-                            if stationQty == 0 { stationQty = 1 }
-                        }
-
-                        if isNested && inverterQty > 0 {
-                            actualStationCount := stationQty
-                            if actualStationCount == 0 { actualStationCount = 1 }
-                            
-                            for s := 1; s <= actualStationCount; s++ {
-                                for inv := 1; inv <= inverterQty; inv++ {
-                                    sName := fmt.Sprintf("%s %d", specificAreaName, s)
-                                    invName := fmt.Sprintf("Inverter %d", inv)
-
-                                    allTasks = append(allTasks, domain.TaskDetail{
-                                        ID:              uuid.New(),
-                                        AssignID:        a.ID,
-                                        ChildCategoryID: childID,
-                                        StationName:     &sName,
-                                        InverterName:    &invName,
-                                        Status:          "pending",
-                                    })
-                                }
-                            }
-                        } else {
-                            // Simple List
-                             for i := 0; i < qty; i++ {
-                                sName, invName := domain.Rules.GetTaskNameInfo(i, qty, 0, 0, false)
-                                
-                                // Override with Specific Area Name
-                                if specificAreaName != "Khu vực" {
-                                    sName = fmt.Sprintf("%s %d", specificAreaName, i+1)
-                                }
-                                var iNamePtr *string = nil
-                                if invName != "" { iNamePtr = &invName }
-
-                                allTasks = append(allTasks, domain.TaskDetail{
-                                    ID:              uuid.New(),
-                                    AssignID:        a.ID,
-                                    ChildCategoryID: childID,
-                                    StationName:     &sName,
-                                    InverterName:    iNamePtr,
-                                    Status:          "pending",
-                                })
-                            }
-                        }
-                    }
-				}
-			}
-		}
-
-		// Batch Insert
-		if len(allTasks) > 0 {
-			if err := tx.Create(&allTasks).Error; err != nil {
-				return err
-			}
-		}
+		// Legacy Task Generation from DataWork removed (2026-01-17)
+		// Allocation now relies on Station Linking (Option B) or Manual Task Creation.
 		
 		return nil
 	})
@@ -287,17 +131,52 @@ func (r *projectRepository) CreateAssign(a *domain.Assign) error {
 
 func (r *projectRepository) GetAssignsByUserID(userID uuid.UUID) ([]domain.Assign, error) {
 	var assigns []domain.Assign
-	// Preload necessary associations
-	if err := r.db.Where("id_user = ?", userID).Preload("Project").Preload("Classification").Preload("TaskDetails").Find(&assigns).Error; err != nil {
+	// Preload Classification and TaskDetails (these work normally)
+	if err := r.db.Where("id_user = ?", userID).
+		Preload("Classification").
+		Preload("TaskDetails").
+		Preload("TaskDetails.Process").
+		Preload("TaskDetails.ChildCategory").
+		Preload("TaskDetails.ChildCategory.MainCategory").
+		Find(&assigns).Error; err != nil {
 		return nil, err
 	}
+	
+	// Manual load for Project (because id_project → project_id is non-standard FK)
+	if len(assigns) > 0 {
+		// Collect unique project IDs
+		projectIDs := make([]uuid.UUID, 0)
+		for _, a := range assigns {
+			if a.ProjectID != uuid.Nil {
+				projectIDs = append(projectIDs, a.ProjectID)
+			}
+		}
+		
+		if len(projectIDs) > 0 {
+			var projects []domain.Project
+			if err := r.db.Where("project_id IN ?", projectIDs).Find(&projects).Error; err == nil {
+				// Create map for quick lookup
+				projectMap := make(map[uuid.UUID]*domain.Project)
+				for i := range projects {
+					projectMap[projects[i].ID] = &projects[i]
+				}
+				// Assign to each
+				for i := range assigns {
+					if p, ok := projectMap[assigns[i].ProjectID]; ok {
+						assigns[i].Project = p
+					}
+				}
+			}
+		}
+	}
+	
 	return assigns, nil
 }
 
 func (r *projectRepository) GetAssignByID(id uuid.UUID) (*domain.Assign, error) {
     var assign domain.Assign
     // Don't preload Project here to avoid issues, load manually below
-    if err := r.db.Where("id = ?", id).Preload("Classification").Preload("TaskDetails").First(&assign).Error; err != nil {
+    if err := r.db.Where("id = ?", id).Preload("Classification").Preload("TaskDetails").Preload("TaskDetails.Process").First(&assign).Error; err != nil {
         return nil, err
     }
 
@@ -312,9 +191,8 @@ func (r *projectRepository) GetAssignByID(id uuid.UUID) (*domain.Assign, error) 
     return &assign, nil
 }
 
-func (r *projectRepository) UpdateAssignDataResult(id uuid.UUID, data domain.AssetMetadata) error {
-	return r.db.Model(&domain.Assign{}).Where("id = ?", id).Update("data_result", data).Error
-}
+// UpdateAssignDataResult removed
+
 
 func (r *projectRepository) CheckProjectExistsInAssign(projectID uuid.UUID) (bool, error) {
     var count int64
@@ -332,9 +210,8 @@ func (r *projectRepository) GetAssignsByProjectID(projectID uuid.UUID) ([]domain
     return assigns, nil
 }
 
-func (r *projectRepository) UpdateAssign(a *domain.Assign) error {
-    return r.db.Model(a).Update("data_work", a.DataWork).Error
-}
+// UpdateAssign removed (DataWork deprecated)
+
 
 func (r *projectRepository) GetAllAssigns() ([]domain.Assign, error) {
 	var assigns []domain.Assign
@@ -344,6 +221,8 @@ func (r *projectRepository) GetAllAssigns() ([]domain.Assign, error) {
 		Preload("User").
 		Preload("Classification").
 		Preload("TaskDetails.ChildCategory.MainCategory").
+		Preload("TaskDetails.Station").
+		Preload("TaskDetails.Process"). // NEW: Preload Process
 		Find(&assigns).Error; err != nil {
 		return nil, err
 	}
@@ -544,20 +423,12 @@ func (r *projectRepository) UpdateTaskDetailCheck(assignID, childID uuid.UUID, i
     return nil
 }
 
-func (r *projectRepository) UpdateTaskDetailAccept(id uuid.UUID, accept int, note string) error {
-    updates := map[string]interface{}{
-        "accept": accept,
-        "note":   note,
-    }
-    now := time.Now()
-    
-    if accept == -1 {
-         updates["rejected_at"] = &now
-    } else if accept == 1 {
-         updates["approval_at"] = &now
-    }
-    
-    return r.db.Model(&domain.TaskDetail{}).Where("id = ?", id).Updates(updates).Error
+func (r *projectRepository) UpdateTaskDetailStatus(id uuid.UUID, updates map[string]interface{}) error {
+	return r.db.Model(&domain.TaskDetail{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *projectRepository) UpdateTaskDetailsStatusBulk(ids []uuid.UUID, updates map[string]interface{}) error {
+	return r.db.Model(&domain.TaskDetail{}).Where("id IN ?", ids).Updates(updates).Error
 }
 
 func (r *projectRepository) DeleteMainCategory(id uuid.UUID) error {
@@ -675,98 +546,75 @@ func (r *projectRepository) SyncTaskDetails(assignID uuid.UUID, details []domain
             return err
         }
         
-        // Helper to handle nil strings for keys
-        val := func(s *string) string {
-            if s == nil { return "" }
-            return *s
-        }
-        
-        // 2. Map existing tasks
-        existingMap := make(map[string]*domain.TaskDetail)
+        // 2. Map existing tasks by ID
         existingMapByID := make(map[uuid.UUID]*domain.TaskDetail)
-
         for i := range existingTasks {
-            t := &existingTasks[i]
-            key := fmt.Sprintf("%s|%s|%s", t.ChildCategoryID, val(t.StationName), val(t.InverterName))
-            existingMap[key] = t
-            existingMapByID[t.ID] = t
-            // fmt.Printf("[DEBUG REPO] Loaded Existing Key: '%s' | ID: %s\n", key, t.ID)
+            existingMapByID[existingTasks[i].ID] = &existingTasks[i]
         }
         
         processedIDs := make(map[uuid.UUID]bool)
         
-        // 3. Upsert
+        // 3. Upsert based on new schema
         for _, d := range details {
+            d.AssignID = assignID // Ensure correct assign
             
-            var existing *domain.TaskDetail
-            
-            // PRIORITY 1: Match by ID (if strictly provided)
             if d.ID != uuid.Nil {
-                if found, ok := existingMapByID[d.ID]; ok {
-                    existing = found
+                if existing, ok := existingMapByID[d.ID]; ok {
+                    // Update existing - preserve approval status if already approved
+                    if existing.StatusApprove == 1 {
+                        d.StatusApprove = existing.StatusApprove
+                        d.ApprovalAt = existing.ApprovalAt
+                        d.NoteApproval = existing.NoteApproval
+                    }
+                    d.CreatedAt = existing.CreatedAt
+                    
+                    if err := tx.Save(&d).Error; err != nil {
+                        return err
+                    }
+                    processedIDs[d.ID] = true
+                    continue
                 }
             }
             
-            // PRIORITY 2: Match by Key (if ID not matched)
-            key := fmt.Sprintf("%s|%s|%s", d.ChildCategoryID, val(d.StationName), val(d.InverterName))
-            if existing == nil {
-                if found, ok := existingMap[key]; ok {
-                    existing = found
-                }
+            // Insert new
+            if err := tx.Create(&d).Error; err != nil {
+                return err
             }
-            
-            // Debug
-            // fmt.Printf("[DEBUG REPO] Incoming ID: %s | Key: %s | Match Found: %v\n", d.ID, key, existing != nil)
-
-            if existing != nil {
-                // Update existing record
-                d.ID = existing.ID // CRITICAL: Preserve ID
-                
-                // PRESERVE STATUS Logic:
-                // If existing is 'completed' (Approved), do NOT revert to 'waiting_approval'.
-                // If existing is 'issue' (Rejected) and we found new images (which sets d.Status to waiting_approval), we ALLOW update (re-submission).
-                if existing.Status == "completed" || existing.Accept == 1 {
-                    d.Status = existing.Status
-                    d.Accept = existing.Accept
-                    d.ApprovalAt = existing.ApprovalAt
-                } else {
-                     // If Sync proposes a change (e.g. found images -> waiting_approval), we take it.
-                     // But ensure we don't accidentally clear status if we mapped wrong.
-                     if d.Status == "" { d.Status = existing.Status }
-                }
-
-                // Preserve Manager Timestamps if new data doesn't provide them
-                if d.ApprovalAt == nil { d.ApprovalAt = existing.ApprovalAt }
-                if d.RejectedAt == nil { d.RejectedAt = existing.RejectedAt }
-                if d.SubmittedAt == nil { d.SubmittedAt = existing.SubmittedAt }
-                
-                // Preserve created_at
-                d.CreatedAt = existing.CreatedAt
-                
-                if err := tx.Save(&d).Error; err != nil {
-                    return err
-                }
-                processedIDs[d.ID] = true
-            } else {
-                // Insert new record
-                if err := tx.Create(&d).Error; err != nil {
-                    return err
-                }
-                processedIDs[d.ID] = true
-            }
+            processedIDs[d.ID] = true
         }
         
-        // 4. Delete Orphans
-        for _, t := range existingTasks {
-            if !processedIDs[t.ID] {
-                 if err := tx.Delete(&t).Error; err != nil {
-                     return err
-                 }
-            }
-        }
+        // 4. Delete orphans (optional - only delete if explicitly removed)
+        // Commented out to preserve task_details that were auto-created from stations
+        // for _, t := range existingTasks {
+        //     if !processedIDs[t.ID] {
+        //         tx.Delete(&t)
+        //     }
+        // }
         
         return nil
     })
+}
+
+func (r *projectRepository) UpdateStationAssignID(stationIDs []uuid.UUID, assignID uuid.UUID) error {
+    if len(stationIDs) == 0 {
+        return nil
+    }
+    return r.db.Model(&domain.Station{}).
+        Where("id IN ?", stationIDs).
+        Update("assign_id", assignID).Error
+}
+
+func (r *projectRepository) GetStationIDsByChildConfigIDs(configIDs []uuid.UUID) ([]uuid.UUID, error) {
+    if len(configIDs) == 0 {
+        return nil, nil
+    }
+    var stationIDs []uuid.UUID
+    // Distinct selection
+    err := r.db.Model(&domain.StationChildConfig{}).
+        Where("id IN ?", configIDs).
+        Distinct("station_id").
+        Pluck("station_id", &stationIDs).Error
+    return stationIDs, err
 }
 
 func (r *projectRepository) GetDetailedStats(projectID string, timeUnit string, userID string) ([]domain.TimeStat, error) {

@@ -100,13 +100,19 @@ func main() {
     // Notification Module
     notificationService := services.NewNotificationService()
 
+	// Station Module (moved before Allocation Handler since it's now a dependency)
+	stationRepo := postgres.NewStationRepository(database.DB)
+	stationHandler := handler.NewStationHandler(stationRepo, minioClient)
+
 	// Allocation Handler (Aggregates multiple services/repos)
 	allocationHandler := handler.NewAllocationHandler(
 		projectRepo,
 		userRepo,
+		stationRepo, // NEW: Pass station repo
 		assignmentService,
 		notificationService,
 		database.DB,
+		minioClient, // NEW
 	)
 
     // Admin Handler (Database Inspector)
@@ -210,6 +216,18 @@ func main() {
 		api.DELETE("/main-categories/:id", projectHandler.DeleteMainCategory) // New
 		api.DELETE("/child-categories/:id", projectHandler.DeleteChildCategory) // New
         
+		// Station Routes
+		api.GET("/stations", stationHandler.GetStations)
+		api.GET("/stations/user/:userId", stationHandler.GetStationsByUserID) // NEW: For Environment Page
+		api.GET("/stations/:id", stationHandler.GetStationByID)
+		api.POST("/stations", stationHandler.CreateStation)
+		api.PUT("/stations/:id", stationHandler.UpdateStation)
+		api.DELETE("/stations/:id", stationHandler.DeleteStation)
+		api.PUT("/stations/:id/config", stationHandler.SaveStationConfig) // Save child category list
+		api.PUT("/stations/:id/child-config", stationHandler.SaveChildConfig) // Save per-child config
+		api.POST("/stations/:id/upload-guide", stationHandler.UploadGuideFile) // Upload Guide Images
+		api.GET("/stations/:id/child-categories", projectHandler.GetChildCategoriesByStationID) // New Nested Route
+
         // Checklist Routes (Site Inverter Structure)
         api.POST("/checklists", checklistHandler.SaveConfig)
         api.GET("/checklists/:assign_id", checklistHandler.GetConfig)
@@ -228,6 +246,15 @@ func main() {
 		api.POST("/allocations/:id/sync", allocationHandler.SyncProgress)
 		api.POST("/allocations/sync-all", allocationHandler.SyncAllProgress) // New Sync All Route
 		api.PUT("/task-details/:id/status", allocationHandler.UpdateTaskStatus) // New Route
+		api.PUT("/task-details/bulk/status", allocationHandler.BulkUpdateTaskStatus) // New Bulk Route
+        
+        // Monitoring Route (Task Submission)
+        api.POST("/monitoring/submit", allocationHandler.SubmitTaskEvidence)
+        api.POST("/monitoring/reset", allocationHandler.ResetTaskSubmission) // NEW RESET ROUTE
+        api.GET("/monitoring/evidence/:id", allocationHandler.GetTaskEvidence) // NEW EVIDENCE ROUTE
+        api.DELETE("/monitoring/evidence", allocationHandler.DeleteTaskEvidence) // NEW DELETE ROUTE
+        api.PUT("/monitoring/note", allocationHandler.UpdateTaskNote) // NEW NOTE UPDATE ROUTE
+        api.GET("/monitoring/note/:id", allocationHandler.GetTaskNote) // NEW NOTE GET ROUTE
 		
 		// History Endpoint
 		api.GET("/allocations/history", allocationHandler.GetHistory)

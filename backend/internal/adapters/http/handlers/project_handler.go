@@ -163,8 +163,13 @@ func (h *ProjectHandler) CreateChildCategory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if req.Name == "" || req.MainCategoryID == uuid.Nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Name and MainCategoryID are required"})
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name is required"})
+		return
+	}
+	// Require either MainCategoryID OR StationID
+	if req.MainCategoryID == uuid.Nil && req.StationID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either MainCategoryID or StationID is required"})
 		return
 	}
 	
@@ -202,8 +207,9 @@ func (h *ProjectHandler) UpdateChildCategory(c *gin.Context) {
 	}
 	
 	var req struct {
-		Name             string `json:"name"`
-		RequiresInverter *bool  `json:"requires_inverter"`
+		Name             string  `json:"name"`
+		RequiresInverter *bool   `json:"requires_inverter"`
+		StationID        *string `json:"station_id"` // Can be null to unlink
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -219,6 +225,17 @@ func (h *ProjectHandler) UpdateChildCategory(c *gin.Context) {
 	if req.RequiresInverter != nil {
 		updates["requires_inverter"] = *req.RequiresInverter
 	}
+	// Handle station_id (can be null to unlink, or a UUID string to link)
+	if req.StationID != nil {
+		if *req.StationID == "" {
+			updates["id_station"] = nil
+		} else {
+			stationUUID, err := uuid.Parse(*req.StationID)
+			if err == nil {
+				updates["id_station"] = stationUUID
+			}
+		}
+	}
 	
 	if h.DB != nil {
 		if err := h.DB.Model(&domain.ChildCategory{}).Where("id = ?", id).Updates(updates).Error; err != nil {
@@ -228,6 +245,21 @@ func (h *ProjectHandler) UpdateChildCategory(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusOK, gin.H{"message": "Child category updated successfully", "id": id})
+}
+
+func (h *ProjectHandler) GetChildCategoriesByStationID(c *gin.Context) {
+	paramID := c.Param("id")
+	id, err := uuid.Parse(paramID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Station ID"})
+		return
+	}
+	data, err := h.Repo.GetChildCategoriesByStationID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 func (h *ProjectHandler) GetProjectCharacteristics(c *gin.Context) {

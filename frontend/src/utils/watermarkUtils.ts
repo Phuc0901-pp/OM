@@ -5,19 +5,44 @@ interface WatermarkData {
 }
 
 import logoSrc from '../assets/logo.png';
+import { TIME_ICON_SVG, ADDRESS_ICON_SVG, createSvgDataUrl } from './watermarkIcons';
 
-// Cache logo to avoid reloading every time (Performance Optimization)
-let cachedLogo: HTMLImageElement | null = null;
-const loadLogoPromise = new Promise<HTMLImageElement | null>((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-        cachedLogo = img;
-        resolve(img);
-    };
-    img.onerror = () => resolve(null);
-    img.src = logoSrc;
-});
+// Cache mechanism
+interface CachedResources {
+    logo: HTMLImageElement | null;
+    timeIcon: HTMLImageElement | null;
+    addressIcon: HTMLImageElement | null;
+}
+
+const resources: CachedResources = {
+    logo: null,
+    timeIcon: null,
+    addressIcon: null
+};
+
+// Helper to load image
+const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+};
+
+// Init Loader
+const loadResourcesPromise = (async () => {
+    const [logo, time, address] = await Promise.all([
+        loadImage(logoSrc),
+        loadImage(createSvgDataUrl(TIME_ICON_SVG, 'white')),
+        loadImage(createSvgDataUrl(ADDRESS_ICON_SVG, 'white'))
+    ]);
+    resources.logo = logo;
+    resources.timeIcon = time;
+    resources.addressIcon = address;
+    return resources;
+})();
 
 export const drawWatermarkFrame = (
     ctx: CanvasRenderingContext2D,
@@ -25,104 +50,85 @@ export const drawWatermarkFrame = (
     height: number,
     timestamp: string,
     location: string,
-    logoImg: HTMLImageElement | null,
+    logoImg: HTMLImageElement | null, // Kept for signature compatibility
     rotationAngle: number = 0
 ) => {
-    // --- Configuration ---
-    const baseScale = Math.min(width, height) / 800; // Normalize to mobile screen size
-    const fontSize = Math.max(12, 12 * baseScale);
-    const logoSize = Math.max(30, 30 * baseScale);
-    const padding = Math.max(8, 10 * baseScale);
-    const lineHeight = fontSize * 1.4;
+    // Ensure we use the loaded icons (or logo if passed explicitly, though we use cached mostly)
+    // Note: logoImg passed from addWatermarkToCanvas might be the one from promise, which is good.
+    // We need time/address icons from our local cache.
+    const { timeIcon, addressIcon } = resources;
 
-    // Prepare Text (Removed User Name)
-    const textLines = [
-        `⏰ ${timestamp}`,
-        `📍 ${location}`
+    // --- Configuration ---
+    const baseScale = Math.min(width, height) / 800;
+    const fontSize = Math.max(12, 14 * baseScale); // Slightly larger
+    const iconSize = fontSize * 1.4; // Icons match line height roughly
+    const padding = Math.max(8, 12 * baseScale);
+    const gap = 8 * baseScale; // Gap between icon and text
+    const lineHeight = fontSize * 1.6;
+
+    // Data Structure
+    const lines = [
+        { icon: timeIcon, text: timestamp },
+        { icon: addressIcon, text: location }
     ];
 
     // Calculate Box Size
     ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
-    let maxTextWidth = 0;
-    textLines.forEach(text => {
-        const metrics = ctx.measureText(text);
-        if (metrics.width > maxTextWidth) maxTextWidth = metrics.width;
+    let maxContentWidth = 0;
+
+    lines.forEach(line => {
+        const textMetrics = ctx.measureText(line.text);
+        const lineWidth = (line.icon ? iconSize + gap : 0) + textMetrics.width;
+        if (lineWidth > maxContentWidth) maxContentWidth = lineWidth;
     });
 
-    const boxWidth = maxTextWidth + (padding * 2);
-    const boxHeight = (lineHeight * textLines.length) + (padding * 2);
+    const boxWidth = maxContentWidth + (padding * 2);
+    const boxHeight = (lineHeight * lines.length) + (padding * 2) - (lineHeight - fontSize); // Trim bottom gap slightly
 
-    // --- Rotation Logic ---
-    ctx.save();
-
-    // Position 10px from edges (safe area)
+    // Position (Bottom-Left)
     const margin = padding;
-
-    // We want the watermark to align with GRAVITY "Down".
-    // rotationAngle is the device rotation (0, 90, 180, -90).
-    // If device is updated, we rotate constraints.
-    // Standard visual position: Bottom-Left.
-
-    let x = 0, y = 0;
-
-    // Transform coordinate system to center of where we want the box, then rotate
-    // Actually, easier to rotate around center of canvas or pivot?
-    // Let's implement simpler logic: Draw relative to un-rotated,
-    // BUT if we want "Vertical Watermark" on Tilted Phone, we must rotate context to visually oppose the tilt.
-
-    // Translate to center for rotation
-    // ctx.translate(width / 2, height / 2);
-    // ctx.rotate((-rotationAngle * Math.PI) / 180);
-    // ctx.translate(-width / 2, -height / 2);
-
-    // Simple Bottom-Left logic (Default 0 deg)
-    x = margin;
-    y = height - boxHeight - margin;
-
-    // Apply rotation if needed (Advanced: for now just drawing standard)
-    // If we support full gravity alignment, complex math needed for box position limit.
-    // For MVP "Video + Watermark", we stick to fixed or simple 90deg steps if passed.
-    if (rotationAngle !== 0) {
-        // Just rotate the watermark ITSELF? or the position?
-        // Let's keep it simple: Fixed position for now, Rotation comes next if requested strictly.
-        // User requested: "watermark phải luôn dọc thẳng đứng"
-        // This implies rotating the Context around the center of the watermark box?
-        // Or positioning it on the "Down" side of screen.
-    }
+    const x = margin;
+    const y = height - boxHeight - margin;
 
     // --- Draw ---
+    ctx.save();
 
-    // Draw Background Box
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    // 1. Background Box
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; // Darker for contrast
     // @ts-ignore
     ctx.roundRect ? ctx.roundRect(x, y, boxWidth, boxHeight, 8) : ctx.fillRect(x, y, boxWidth, boxHeight);
     ctx.fill();
 
-    // Draw Logo (Inside Box, Top Left)
+    // 2. Logo (Top-Left of Screen)
     if (logoImg) {
-        // Draw logo shifted slightly up-left or inline?
-        // Current design: Logo is separate top-left?
-        // Step 392 code drew Logo at (padding, padding) [Top Left of Screen]
-        // And Text at Bottom Left.
-
-        // Let's keep consistency.
-        // Draw Logo at Screen Top-Left
-        const logoPadding = padding;
+        const logoSize = Math.max(30, 30 * baseScale);
         ctx.shadowColor = 'rgba(0,0,0,0.5)';
         ctx.shadowBlur = 4;
-        ctx.drawImage(logoImg, logoPadding, logoPadding, logoSize, logoSize);
+        ctx.drawImage(logoImg, padding, padding, logoSize, logoSize);
         ctx.shadowBlur = 0;
     }
 
-    // Draw Text (Inside Bottom Box)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.textBaseline = 'top';
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    // 3. Text and Icons
+    ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+    ctx.textBaseline = 'middle'; // Align with icon center
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 2;
 
-    let currentY = y + padding;
-    textLines.forEach(text => {
-        ctx.fillText(text, x + padding, currentY);
+    let currentY = y + padding + (fontSize / 2); // Center of first line
+
+    lines.forEach(line => {
+        let drawX = x + padding;
+
+        // Draw Icon
+        if (line.icon) {
+            // center icon vertically on currentY
+            ctx.drawImage(line.icon, drawX, currentY - (iconSize / 2), iconSize, iconSize);
+            drawX += iconSize + gap;
+        }
+
+        // Draw Text
+        ctx.fillText(line.text, drawX, currentY);
+
         currentY += lineHeight;
     });
 
@@ -141,12 +147,12 @@ export const addWatermarkToCanvas = async (
             hour: '2-digit', minute: '2-digit', second: '2-digit'
         });
 
-        // Use cached logo or wait for load
-        const getLogo = () => cachedLogo ? Promise.resolve(cachedLogo) : loadLogoPromise;
+        // Use resources loader
+        const getResources = () => resources.logo ? Promise.resolve(resources) : loadResourcesPromise;
 
-        // Parallel execution: Get Logo and Get GPS (if needed)
+        // Parallel execution: Get Resources and Get GPS
         Promise.all([
-            getLogo(),
+            getResources(),
             new Promise<string>((resolveLocation) => {
                 if (providedLocation) {
                     resolveLocation(providedLocation);
@@ -163,10 +169,11 @@ export const addWatermarkToCanvas = async (
                     );
                 }
             })
-        ]).then(([logoImg, location]) => {
+        ]).then(([res, location]) => {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-                drawWatermarkFrame(ctx, canvas.width, canvas.height, timestamp, location, logoImg, rotationAngle);
+                // drawWatermarkFrame uses internal resources for Icons, passing logo explicitly if needed (res.logo)
+                drawWatermarkFrame(ctx, canvas.width, canvas.height, timestamp, location, res.logo, rotationAngle);
             }
             resolve(canvas.toDataURL('image/jpeg', 0.9));
         });

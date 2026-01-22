@@ -15,6 +15,7 @@ interface DashboardStats {
     activeAssignments: number;
     completedTasks: number;
     totalUsers: number;
+    totalTasks: number; // Total number of tasks
 }
 interface RecentActivity {
     id: string;
@@ -55,7 +56,7 @@ const getManagerId = () => {
 const ManagerDashboard = () => {
     const navigate = useNavigate();
     const [stats, setStats] = useState<DashboardStats>({
-        totalProjects: 0, activeAssignments: 0, completedTasks: 0, totalUsers: 0
+        totalProjects: 0, activeAssignments: 0, completedTasks: 0, totalUsers: 0, totalTasks: 0
     });
     const [loading, setLoading] = useState(true);
     const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
@@ -78,11 +79,27 @@ const ManagerDashboard = () => {
                 api.get('/users')
             ]);
 
+            // Count tasks by status_approve from allocations data
+            const allTaskDetails: any[] = [];
+            (assign.data || []).forEach((a: any) => {
+                if (a.task_details && Array.isArray(a.task_details)) {
+                    allTaskDetails.push(...a.task_details);
+                }
+            });
+
+            const pendingCount = allTaskDetails.filter((t: any) =>
+                (t.status_approve === 0 || t.accept === 0) && t.status_submit === 1
+            ).length;
+            const approvedCount = allTaskDetails.filter((t: any) =>
+                t.status_approve === 1 || t.accept === 1
+            ).length;
+
             setStats({
                 totalProjects: proj.data?.length || 0,
-                activeAssignments: assign.data?.length || 0,
-                completedTasks: comp.data?.length || 0,
-                totalUsers: users.data?.length || 0
+                activeAssignments: pendingCount, // ĐANG THỰC HIỆN (status_approve = 0)
+                completedTasks: approvedCount,   // HOÀN THÀNH (status_approve = 1)
+                totalUsers: users.data?.length || 0,
+                totalTasks: allTaskDetails.length // Tổng số task
             });
 
             setRecentActivities((comp.data || []).slice(0, 5).map((t: any) => ({
@@ -124,7 +141,7 @@ const ManagerDashboard = () => {
         return total > 0 ? Math.round((stats.completedTasks / total) * 100) : 0;
     }, [stats]);
 
-    const teamPerformance = useMemo(() => stats.totalUsers > 0 ? (stats.completedTasks / stats.totalUsers).toFixed(1) : '0', [stats]);
+    const teamPerformance = useMemo(() => stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks).toFixed(2) : '0', [stats]);
 
     if (loading) return (
         <div className="min-h-[60vh] flex items-center justify-center">
@@ -210,10 +227,11 @@ const ManagerDashboard = () => {
             {/* Quick Actions */}
             <div>
                 <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-3"><TrendingUp className="w-6 h-6 text-indigo-600" /> Truy cập nhanh</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     {[
                         { title: 'Phân bổ công việc', desc: 'Tạo phân công mới', icon: FolderPlus, gradient: 'from-blue-500 to-indigo-600', path: '/manager/allocation' },
                         { title: 'Quản lý hệ thống', desc: 'Nhân sự, dự án', icon: LayoutGrid, gradient: 'from-violet-500 to-purple-600', path: '/manager/management' },
+                        { title: 'Vận hành', desc: 'Quản lý công việc', icon: Activity, gradient: 'from-cyan-500 to-teal-500', path: '/manager/operations' },
                         { title: 'Báo cáo công việc', desc: 'Xem báo cáo chi tiết', icon: FileText, gradient: 'from-emerald-500 to-teal-600', path: '/manager/reports' },
                         { title: 'Lịch sử phân công', desc: 'Xem xác đã xóa', icon: History, gradient: 'from-amber-500 to-orange-600', path: '/manager/history' }
                     ].map((action, index) => (

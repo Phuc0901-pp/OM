@@ -1,16 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, SwitchCamera, Video, Camera, ZoomIn, ZoomOut, Circle, Square } from 'lucide-react';
+import { X, SwitchCamera, Video, Camera, ZoomIn, ZoomOut, Circle, Square, Check } from 'lucide-react';
 import { addWatermarkToCanvas, drawWatermarkFrame } from '../../utils/watermarkUtils';
 import logoSrc from '../../assets/logo.png'; // Need logo for video frame drawing
 
 interface CameraModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onCapture: (data: string | Blob) => void; // Support Base64 (Photo) or Blob (Video)
+    onCapture: (data: (string | Blob)[]) => void; // Support Multi-Capture
+    requiredImageCount?: number;
+    existingImageCount?: number; // New Prop
 }
 
-const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture }) => {
+interface CapturedItem {
+    id: string;
+    data: string | Blob;
+    type: 'photo' | 'video';
+    selected: boolean;
+}
+
+const CameraModal: React.FC<CameraModalProps> = (props) => {
+    const { isOpen, onClose, onCapture, requiredImageCount = 0 } = props;
     // Refs
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null); // For Photo Capture
@@ -26,8 +36,15 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
     const [selectedCameraId, setSelectedCameraId] = useState<string>('');
     const [flashMsg, setFlashMsg] = useState<string | null>(null);
     const [gpsLocation, setGpsLocation] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false); // Prevent double-submit
 
-    // Zoom & Orientation
+    // ... (rest of the file) ...
+
+
+
+    // ... (rendering) ...
+
+
     const [zoom, setZoom] = useState(1);
     const [maxZoom, setMaxZoom] = useState(1);
     const [rotationAngle, setRotationAngle] = useState(0);
@@ -36,6 +53,10 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Multi-Capture State
+    const [captures, setCaptures] = useState<CapturedItem[]>([]);
+    const [previewItem, setPreviewItem] = useState<CapturedItem | null>(null);
 
     // Load Logo for Video
     const logoRef = useRef<HTMLImageElement | null>(null);
@@ -178,6 +199,27 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
         setSelectedCameraId(cameras[(idx + 1) % cameras.length].deviceId);
     };
 
+    const isSavingRef = useRef(false);
+
+    const handleConfirm = () => {
+        if (isSavingRef.current || isSaving) return; // Prevent double trigger synchronously
+
+        const selectedItems = captures.filter(c => c.selected);
+        const selectedCount = selectedItems.length;
+        const totalCount = (props.existingImageCount || 0) + selectedCount;
+
+        if (requiredImageCount > 0 && totalCount !== requiredImageCount) {
+            const existing = props.existingImageCount || 0;
+            alert(`Yêu cầu tổng cộng ${requiredImageCount} ảnh.\n- Đã có sẵn: ${existing} ảnh\n- Bạn chọn thêm: ${selectedCount} ảnh\n- Tổng cộng: ${totalCount} ảnh\n\nVui lòng chọn đúng số lượng yêu cầu.`);
+            return;
+        }
+
+        isSavingRef.current = true;
+        setIsSaving(true);
+        onCapture(selectedItems.map(c => c.data));
+        // Modal will be unmounted by parent, so we don't need to reset isSaving usually
+    };
+
     // 3. Capture Handler
     const handleCapture = async () => {
         if (mode === 'photo') {
@@ -233,12 +275,12 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
                 sw = visibleWidth;
             }
 
-            // 3. Destination Size (Max 2K, maintain Screen Ratio)
-            const MAX_DIM = 2560;
+            // 3. Destination Size (Max 1080p, maintain Screen Ratio)
+            const MAX_DIM = 1920; // 1080p resolution
             // Scale based on destination/screen max edge
             // Wait, we want high res. rect.width is small (CSS px).
             // We should base it on Source resolution, but cropped.
-            // Let's use Source Crop dimensions as baseline, then cap at 2K.
+            // Let's use Source Crop dimensions as baseline, then cap at 1080p.
             const outputScale = Math.min(1, MAX_DIM / Math.max(sw, sh));
 
             canvas.width = sw * outputScale;
@@ -256,12 +298,27 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
                     // object-cover naturally handles orientation visually. 
                     // If user holds landscape, clientRatio > 1. Capture will be landscape.
                     const result = await addWatermarkToCanvas(canvas, gpsLocation || undefined, rotationAngle);
-                    onCapture(result);
+
+                    const newItem: CapturedItem = {
+                        id: Date.now().toString(),
+                        data: result,
+                        type: 'photo',
+                        selected: true // Auto-select by default
+                    };
+                    setCaptures(prev => [...prev, newItem]);
+
                     setFlashMsg("Đã chụp!");
                     setTimeout(() => setFlashMsg(null), 1000);
                 } catch (e) {
                     console.error(e);
-                    onCapture(canvas.toDataURL('image/jpeg', 0.8)); // Fallback
+                    // Fallback
+                    const newItem: CapturedItem = {
+                        id: Date.now().toString(),
+                        data: canvas.toDataURL('image/jpeg', 0.92),
+                        type: 'photo',
+                        selected: true
+                    };
+                    setCaptures(prev => [...prev, newItem]);
                 }
             }
         }, 50);
@@ -373,7 +430,15 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
         recorder.onstop = () => {
             const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-            onCapture(blob); // Return Blob
+
+            const newItem: CapturedItem = {
+                id: Date.now().toString(),
+                data: blob,
+                type: 'video',
+                selected: true
+            };
+            setCaptures(prev => [...prev, newItem]);
+
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
             setFlashMsg("Đã lưu Video!");
             setTimeout(() => setFlashMsg(null), 1500);
@@ -405,6 +470,14 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
     // Use Portal to render outside the DOM hierarchy (directly to body)
     // This ensures the modal covers the entire viewport including sidebar
+    const toggleSelection = (id: string) => {
+        setCaptures(prev => prev.map(item =>
+            item.id === id ? { ...item, selected: !item.selected } : item
+        ));
+    };
+
+
+
     const modalContent = (
         <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center p-0 md:p-6 font-sans">
             {/* Modal Container (Desktop: Centered Box, Mobile: Full Screen) */}
@@ -430,20 +503,41 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
                 {/* Video Viewport */}
                 <div className="flex-1 relative bg-black overflow-hidden group">
-                    {/* Video with Object Fit Contain for 'Viewfinder' feel on desktop, Cover on mobile if preferred. 
-                        Let's use cover for immersion but ensured aspect ratio by parent. */}
-                    <video ref={videoRef} autoPlay playsInline muted={!isRecording} className="absolute inset-0 w-full h-full object-cover" />
+                    {/* Preview Mode Overlay */}
+                    {previewItem ? (
+                        <div className="absolute inset-0 z-40 bg-black flex items-center justify-center">
+                            {previewItem.type === 'photo' ? (
+                                <img src={previewItem.data as string} className="w-full h-full object-contain" />
+                            ) : (
+                                <video src={URL.createObjectURL(previewItem.data as Blob)} controls className="w-full h-full object-contain" />
+                            )}
 
-                    {/* Zoom Slider Overlay */}
-                    {maxZoom > 1 && (
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-64 bg-black/30 backdrop-blur-md p-2 rounded-full flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                            <ZoomOut className="w-4 h-4 text-white" />
-                            <input
-                                type="range" min="1" max={maxZoom} step="0.1" value={zoom} onChange={handleZoomChange}
-                                className="flex-1 h-1 bg-white/50 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <ZoomIn className="w-4 h-4 text-white" />
+                            {/* Close Preview Button */}
+                            <button
+                                onClick={() => setPreviewItem(null)}
+                                className="absolute top-4 left-4 px-4 py-2 bg-black/50 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-colors flex items-center gap-2"
+                            >
+                                <X className="w-4 h-4" />
+                                <span className="text-xs font-bold">Quay lại Camera</span>
+                            </button>
                         </div>
+                    ) : (
+                        /* Live Camera View */
+                        <>
+                            <video ref={videoRef} autoPlay playsInline muted={!isRecording} className="absolute inset-0 w-full h-full object-cover" />
+
+                            {/* Zoom Slider Overlay */}
+                            {maxZoom > 1 && (
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-64 bg-black/30 backdrop-blur-md p-2 rounded-full flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                    <ZoomOut className="w-4 h-4 text-white" />
+                                    <input
+                                        type="range" min="1" max={maxZoom} step="0.1" value={zoom} onChange={handleZoomChange}
+                                        className="flex-1 h-1 bg-white/50 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                    <ZoomIn className="w-4 h-4 text-white" />
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {flashMsg && (
@@ -456,45 +550,93 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
                 <canvas ref={canvasRef} className="hidden" />
 
                 {/* Bottom Controls */}
-                <div className="flex-none bg-black/80 backdrop-blur-md py-6 px-6 flex flex-col items-center gap-4 z-20 border-t border-white/10">
-                    {/* Mode Switcher */}
-                    {!isRecording && (
-                        <div className="flex bg-white/10 p-1 rounded-full">
-                            <button
-                                onClick={() => setMode('photo')}
-                                className={`px-6 py-1.5 rounded-full text-sm font-bold transition-all ${mode === 'photo' ? 'bg-white text-black shadow-lg' : 'text-white/60 hover:text-white'}`}
-                            >
-                                Ảnh
-                            </button>
-                            <button
-                                onClick={() => setMode('video')}
-                                className={`px-6 py-1.5 rounded-full text-sm font-bold transition-all ${mode === 'video' ? 'bg-white text-black shadow-lg' : 'text-white/60 hover:text-white'}`}
-                            >
-                                Video
-                            </button>
+                <div className="flex-none bg-black/80 backdrop-blur-md py-4 px-6 flex flex-col items-center gap-4 z-20 border-t border-white/10">
+
+                    {/* Gallery / Selection Strip */}
+                    {captures.length > 0 && (
+                        <div className="w-full flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                            {captures.map((item, idx) => (
+                                <div
+                                    key={item.id}
+                                    className={`relative flex-none w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${item.selected ? 'border-green-500 scale-105' : 'border-transparent opacity-60'} ${previewItem?.id === item.id ? 'ring-2 ring-white scale-110 opacity-100' : ''}`}
+                                    onClick={() => setPreviewItem(item)}
+                                >
+                                    {item.type === 'photo' ? (
+                                        <img src={item.data as string} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full bg-slate-800 flex items-center justify-center text-white text-xs">Video</div>
+                                    )}
+
+                                    {/* Selection Checkbox Area - Stop Propagation to avoid opening preview */}
+                                    <div
+                                        className={`absolute top-0 right-0 p-1 bg-black/20 hover:bg-black/40 rounded-bl-lg transition-colors z-10`}
+                                        onClick={(e) => { e.stopPropagation(); toggleSelection(item.id); }}
+                                    >
+                                        <div className={`w-4 h-4 rounded-full border border-white flex items-center justify-center ${item.selected ? 'bg-green-500' : 'bg-black/50'}`}>
+                                            {item.selected && <Check className="w-3 h-3 text-white" />}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
 
-                    {/* Shutter Button */}
-                    <div className="h-16 flex items-center justify-center relative">
-                        {/* Border Ring Decoration */}
-                        <div className={`absolute inset-0 rounded-full border-2 ${mode === 'video' && isRecording ? 'border-red-500/30 scale-125 animate-ping' : 'border-transparent'}`}></div>
+                    <div className="w-full flex items-center justify-between">
+                        {/* Mode Switcher */}
+                        {!isRecording && (
+                            <div className="flex bg-white/10 p-1 rounded-full">
+                                <button
+                                    onClick={() => setMode('photo')}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'photo' ? 'bg-white text-black shadow-lg' : 'text-white/60 hover:text-white'}`}
+                                >
+                                    Ảnh
+                                </button>
+                                <button
+                                    onClick={() => setMode('video')}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'video' ? 'bg-white text-black shadow-lg' : 'text-white/60 hover:text-white'}`}
+                                >
+                                    Video
+                                </button>
+                            </div>
+                        )}
 
+                        {/* Shutter Button */}
+                        <div className="relative">
+                            {/* Border Ring Decoration */}
+                            <div className={`absolute inset-0 rounded-full border-2 ${mode === 'video' && isRecording ? 'border-red-500/30 scale-150 animate-ping' : 'border-transparent'}`}></div>
+
+                            <button
+                                onClick={handleCapture}
+                                className={`rounded-full transition-all shadow-xl active:scale-95 flex items-center justify-center relative z-10 ${mode === 'video'
+                                    ? isRecording
+                                        ? 'w-14 h-14 bg-transparent border-[6px] border-red-500' // Stop Icon style
+                                        : 'w-14 h-14 bg-red-600 border-[4px] border-white'
+                                    : 'w-14 h-14 bg-white border-[4px] border-slate-300'
+                                    }`}
+                            >
+                                {mode === 'video' && isRecording ? <Square className="w-5 h-5 fill-red-500 text-red-500" /> : null}
+                            </button>
+                        </div>
+
+                        {/* Confirm / Done Button */}
                         <button
-                            onClick={handleCapture}
-                            className={`rounded-full transition-all shadow-xl active:scale-95 flex items-center justify-center relative z-10 ${mode === 'video'
-                                ? isRecording
-                                    ? 'w-16 h-16 bg-transparent border-[6px] border-red-500' // Stop Icon style
-                                    : 'w-16 h-16 bg-red-600 border-[4px] border-white'
-                                : 'w-16 h-16 bg-white border-[4px] border-slate-300'
-                                }`}
+                            onClick={handleConfirm}
+                            disabled={captures.length === 0 || isSaving}
+                            className={`px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 ${captures.length > 0 && !isSaving ? 'bg-indigo-600 text-white shadow-lg hover:bg-indigo-500' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}
                         >
-                            {mode === 'video' && isRecording ? <Square className="w-6 h-6 fill-red-500 text-red-500" /> : null}
+                            {isSaving ? (
+                                <span>Đang lưu...</span>
+                            ) : (
+                                <>
+                                    <span>Lưu</span>
+                                    {captures.filter(c => c.selected).length > 0 && (
+                                        <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                                            {captures.filter(c => c.selected).length}
+                                        </span>
+                                    )}
+                                </>
+                            )}
                         </button>
-                    </div>
-
-                    <div className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">
-                        {mode === 'photo' ? 'Chụp ảnh' : (isRecording ? 'Đang ghi hình' : 'Quay video')}
                     </div>
                 </div>
             </div>
@@ -502,7 +644,8 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
     );
 
     // Render to body via portal
-    return ReactDOM.createPortal(modalContent, document.body);
+    if (typeof document === 'undefined' || !document.body) return null;
+    return ReactDOM.createPortal(modalContent, document.body as Element);
 };
 
 export default CameraModal;

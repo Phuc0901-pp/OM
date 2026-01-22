@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../../../services/api';
 import {
-    BarChart3, CheckCircle2, Clock, Activity, Target, TrendingUp, History, Timer, Sparkles
+    BarChart3, CheckCircle2, Clock, Activity, Target, TrendingUp, History, Timer, Sparkles, ChevronRight
 } from 'lucide-react';
 import {
     PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
@@ -173,53 +173,28 @@ const StatisticsPage = () => {
         const rows: DetailedTask[] = [];
         allocations.forEach(alloc => {
             if (selectedProject && alloc.id_project !== selectedProject) return;
-            const mainCats = alloc.data_work?.main_categories || [];
 
-            const detailsMap = new Map<string, any[]>();
-            alloc.task_details?.forEach((td: any) => {
-                const list = detailsMap.get(td.child_category_id) || [];
-                list.push(td);
-                detailsMap.set(td.child_category_id, list);
-            });
-
-            mainCats.forEach(mc => {
-                (mc.child_categories || []).forEach(cc => {
-                    const currentDetails = detailsMap.get(cc.id) || [];
-                    if (currentDetails.length > 0) {
-                        currentDetails.forEach(d => {
-                            rows.push({
-                                id: d.id || `${alloc.id}-${cc.id}-${d.station_name || 'stat'}-${d.inverter_name || 'inv'}`,
-                                projectName: alloc.project?.project_name || 'N/A',
-                                classificationName: alloc.classification?.name || 'N/A',
-                                categoryName: mc.name,
-                                itemName: cc.name,
-                                status: determineTaskStatus(d),
-                                note: d.note,
-                                stationName: d.station_name,
-                                inverterName: d.inverter_name,
-                                dateSubmitted: d.submitted_at ? new Date(d.submitted_at).toLocaleString('vi-VN') : '-',
-                                dateReviewed: d.accept === -1 && d.rejected_at ? new Date(d.rejected_at).toLocaleString('vi-VN') : (d.check === 7 && d.approval_at ? new Date(d.approval_at).toLocaleString('vi-VN') : '-'),
-                            });
-                        });
-                    } else {
-                        // Pending items fallback
-                        const qty = Number(cc.quantity || 1);
-                        for (let i = 0; i < qty; i++) {
-                            rows.push({
-                                id: `${alloc.id}-${cc.id}-pending-${i}`,
-                                projectName: alloc.project?.project_name || 'N/A',
-                                classificationName: alloc.classification?.name || 'N/A',
-                                categoryName: mc.name,
-                                itemName: cc.name,
-                                status: 'pending',
-                                note: '',
-                                dateSubmitted: '-',
-                                dateReviewed: '-',
-                            });
-                        }
-                    }
+            const tasks = alloc.task_details || [];
+            if (tasks.length > 0) {
+                tasks.forEach(d => {
+                    rows.push({
+                        id: d.id,
+                        projectName: alloc.project?.project_name || 'N/A',
+                        classificationName: alloc.classification?.name || 'N/A',
+                        categoryName: d.child_category?.main_category?.name || 'N/A',
+                        itemName: d.child_category?.name || 'N/A',
+                        status: determineTaskStatus(d),
+                        note: d.note,
+                        stationName: d.station_name ?? undefined,
+                        inverterName: d.inverter_name ?? undefined,
+                        dateSubmitted: d.submitted_at ? new Date(d.submitted_at).toLocaleString('vi-VN') : '-',
+                        dateReviewed: d.accept === -1 && d.rejected_at ? new Date(d.rejected_at).toLocaleString('vi-VN') : (d.check === 7 && d.approval_at ? new Date(d.approval_at).toLocaleString('vi-VN') : '-'),
+                    });
                 });
-            });
+            } else {
+                // If no task_details but allocation exists, maybe show a pending row? 
+                // Actually if task_details is empty, there are no tasks effectively.
+            }
         });
         return rows;
     }, [allocations, selectedProject]);
@@ -384,49 +359,145 @@ const StatisticsPage = () => {
                 </GlassCard>
             </div>
 
-            {/* Bottom: Timeline & Table */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <GlassCard className="h-[600px] flex flex-col">
-                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <History className="w-5 h-5 text-purple-600" />
-                        Hoạt động gần đây
-                        <span className="ml-auto bg-purple-50 text-purple-600 px-2 py-0.5 rounded-md text-xs font-bold">{timelineData.length}</span>
-                    </h3>
-                    <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
-                        {timelineData.map((event) => (
-                            <div key={event.id} className="flex gap-4 relative">
-                                <div className="absolute left-[7px] top-8 bottom-[-20px] w-[2px] bg-slate-100 last:hidden"></div>
-                                <div className="w-3.5 h-3.5 rounded-full bg-white border-4 border-indigo-500 shadow-sm shrink-0 z-10 mt-1"></div>
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 block mb-1">
-                                        {new Date(event.submitted_at || event.updated_at).toLocaleString('vi-VN')}
-                                    </span>
-                                    <p className="text-sm font-bold text-slate-800">{event.assign?.project?.project_name}</p>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        <span className="text-slate-400">{event.child_category?.main_category?.name}</span> / <span className="text-indigo-600 font-medium">{event.child_category?.name}</span>
-                                    </p>
+            {/* Task List Table (Operations Format) */}
+            <GlassCard className="flex flex-col min-h-[600px] !p-0 overflow-hidden relative border-slate-200/60 shadow-xl shadow-slate-200/40">
+                <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/50 backdrop-blur-md sticky top-0 z-20">
+                    <div className="flex items-center gap-4">
+                        <div className="h-10 w-1.5 bg-gradient-to-b from-indigo-500 to-purple-600 rounded-full"></div>
+                        <div>
+                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Danh sách nhiệm vụ</h2>
+                            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 rounded-lg mt-0.5">
+                                <div className="flex -space-x-1">
+                                    {[...Array(3)].map((_, i) => (
+                                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-400 ring-1 ring-white"></div>
+                                    ))}
                                 </div>
-                            </div>
-                        ))}
+                                {tableData.length} hạng mục trong danh sách
+                            </span>
+                        </div>
                     </div>
-                </GlassCard>
-
-                <div className="lg:col-span-2">
-                    <GlassCard className="h-[600px] flex flex-col !p-0 overflow-hidden">
-                        <div className="p-6 pb-2">
-                            <h3 className="font-bold text-slate-800 text-lg">Chi tiết bảng công việc</h3>
-                        </div>
-                        <div className="flex-1 overflow-hidden p-4">
-                            <PremiumTable
-                                columns={tableColumns}
-                                data={tableData}
-                                isLoading={loading}
-                                keyField="id"
-                            />
-                        </div>
-                    </GlassCard>
                 </div>
-            </div>
+
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50/80 sticky top-0 z-10 text-[10px] md:text-[11px] font-extrabold text-slate-400 uppercase tracking-wider backdrop-blur-sm border-b border-slate-200">
+                            <tr>
+                                <th className="px-3 py-3 md:px-6 md:py-4">Hạng mục</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4">Công việc</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4">Khu vực</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4">Nhân sự</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">Ngày nộp</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">Ngày duyệt/từ chối</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 text-center">Trạng thái</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 text-center">Chi tiết</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={8} className="p-10 text-center text-slate-400">Đang tải dữ liệu...</td>
+                                </tr>
+                            ) : tableData.length === 0 ? (
+                                <tr>
+                                    <td colSpan={8} className="p-10 text-center flex flex-col items-center justify-center text-slate-400">
+                                        <div className="bg-slate-50 p-4 rounded-full mb-3">
+                                            <Activity className="w-8 h-8 text-slate-300" />
+                                        </div>
+                                        <p>Chưa có nhiệm vụ nào</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                tableData.map((task, index) => {
+                                    // Map status to badge style (mimicking Operations Page colors)
+                                    let statusBadge;
+                                    switch (task.status) {
+                                        case 'approved':
+                                            statusBadge = <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">Đã xong</span>;
+                                            break;
+                                        case 'rejected':
+                                            statusBadge = <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">Từ chối / Sửa lại</span>;
+                                            break;
+                                        case 'submitted':
+                                            statusBadge = <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200">Chờ duyệt</span>;
+                                            break;
+                                        case 'in_progress':
+                                            statusBadge = <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200">Đang làm</span>;
+                                            break;
+                                        default: // pending
+                                            statusBadge = <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border border-gray-200">Chưa thực hiện</span>;
+                                    }
+
+                                    return (
+                                        <tr
+                                            key={task.id || index}
+                                            className="hover:bg-slate-50/80 group transition-all duration-200 cursor-pointer"
+                                        >
+                                            {/* HẠNG MỤC */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 min-w-[150px]">
+                                                <div className="text-sm font-bold text-slate-700">{task.categoryName}</div>
+                                                <div className="text-[10px] text-slate-400 font-medium mt-0.5">{task.projectName}</div>
+                                            </td>
+
+                                            {/* CÔNG VIỆC */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 min-w-[200px]">
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="text-sm font-medium text-slate-600">{task.itemName}</div>
+                                                    {task.inverterName && <span className="text-xs text-slate-400">{task.inverterName}</span>}
+                                                </div>
+                                            </td>
+
+                                            {/* KHU VỰC */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
+                                                <div className="text-sm text-slate-500 font-medium">
+                                                    {task.stationName || '-'}
+                                                </div>
+                                            </td>
+
+                                            {/* NHÂN SỰ */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600">
+                                                        Toi
+                                                    </div>
+                                                    <div className="text-sm font-semibold text-slate-700">Tôi</div>
+                                                </div>
+                                            </td>
+
+                                            {/* NGÀY NỘP */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-xs whitespace-nowrap">
+                                                {task.dateSubmitted !== '-' ? (
+                                                    <span className="font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{task.dateSubmitted}</span>
+                                                ) : <span className="text-slate-300 italic">-</span>}
+                                            </td>
+
+                                            {/* NGÀY DUYỆT */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-xs whitespace-nowrap">
+                                                {task.status === 'approved' && task.dateReviewed !== '-' ? (
+                                                    <span className="text-emerald-600 font-medium">{task.dateReviewed}</span>
+                                                ) : task.status === 'rejected' && task.dateReviewed !== '-' ? (
+                                                    <span className="text-rose-600 font-medium">{task.dateReviewed}</span>
+                                                ) : <span className="text-slate-300 italic">-</span>}
+                                            </td>
+
+                                            {/* TRẠNG THÁI */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 text-center whitespace-nowrap">
+                                                {statusBadge}
+                                            </td>
+
+                                            {/* CHI TIẾT */}
+                                            <td className="px-3 py-3 md:px-6 md:py-4 text-center">
+                                                <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Xem chi tiết">
+                                                    <ChevronRight className="w-5 h-5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </GlassCard>
         </div>
     );
 };

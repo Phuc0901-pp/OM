@@ -66,5 +66,30 @@ export const workOrderService = {
     }
 };
 
+export const stationService = {
+    getAll: async (mainCategoryId: string, projectId?: string) => {
+        const params: any = { main_category_id: mainCategoryId };
+        if (projectId) params.project_id = projectId;
+        const response = await api.get('/stations', { params });
+        return response.data;
+    },
+    getById: async (id: string) => {
+        const response = await api.get(`/stations/${id}`);
+        return response.data;
+    },
+    create: async (data: { name: string; main_category_id: string; project_id: string }) => {
+        const response = await api.post('/stations', data);
+        return response.data;
+    },
+    update: async (id: string, data: { name: string }) => {
+        const response = await api.put(`/stations/${id}`, data);
+        return response.data;
+    },
+    delete: async (id: string) => {
+        const response = await api.delete(`/stations/${id}`);
+        return response.data;
+    }
+};
+
 export default api;
 

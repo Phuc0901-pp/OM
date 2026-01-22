@@ -1,14 +1,27 @@
 export interface TaskDetail {
     id: string;
     child_category_id: string;
-    station_name: string | null;
-    inverter_name: string | null;
+    station_name: string | null | undefined;
+    inverter_name: string | null | undefined;
     status: string;
     check: number;
     accept: number;
+    status_work?: number;
+    status_submit?: number;
+    status_approve?: number;
+    status_reject?: number;
     note: string;
     image_path: string;
+    submitted_at?: string;
+    rejected_at?: string;
+    approval_at?: string;
     updated_at: string;
+    child_category?: {
+        name: string;
+        main_category?: {
+            name: string;
+        }
+    };
 }
 
 export interface WorkItem {

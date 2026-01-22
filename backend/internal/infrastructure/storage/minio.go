@@ -85,3 +85,51 @@ func (m *MinioClient) UploadBytes(data []byte, objectName string, contentType st
 	url := fmt.Sprintf("https://%s/%s/%s", m.Client.EndpointURL().Host, m.Bucket, objectName)
 	return url, nil
 }
+
+// RemoveObject removes an object from the bucket
+func (m *MinioClient) RemoveObject(objectName string) error {
+	ctx := context.Background()
+	opts := minio.RemoveObjectOptions{
+		GovernanceBypass: true,
+	}
+	return m.Client.RemoveObject(ctx, m.Bucket, objectName, opts)
+}
+
+// ListObjects returns a list of public URLs for objects matching a prefix
+func (m *MinioClient) ListObjects(prefix string) ([]string, error) {
+    ctx := context.Background()
+    // List all objects
+    opts := minio.ListObjectsOptions{
+        Prefix:    prefix,
+        Recursive: true,
+    }
+
+    var urls []string
+    for object := range m.Client.ListObjects(ctx, m.Bucket, opts) {
+        if object.Err != nil {
+            return nil, object.Err
+        }
+        // Construct public URL
+        url := fmt.Sprintf("https://%s/%s/%s", m.Client.EndpointURL().Host, m.Bucket, object.Key)
+        urls = append(urls, url)
+    }
+    return urls, nil
+}
+
+// GetObject fetches object content from MinIO
+func (m *MinioClient) GetObject(objectName string) ([]byte, error) {
+    ctx := context.Background()
+    object, err := m.Client.GetObject(ctx, m.Bucket, objectName, minio.GetObjectOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get object: %w", err)
+    }
+    defer object.Close()
+
+    // Read all content
+    buf := new(bytes.Buffer)
+    _, err = buf.ReadFrom(object)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read object content: %w", err)
+    }
+    return buf.Bytes(), nil
+}

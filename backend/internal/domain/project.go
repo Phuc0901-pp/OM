@@ -51,6 +51,10 @@ type ChildCategory struct {
 	Name             string         `gorm:"not null;index:idx_child_name_main,unique" json:"name"`
 	MainCategoryID   uuid.UUID      `gorm:"type:uuid;not null;column:id_main_categories;index:idx_child_name_main,unique" json:"main_category_id"`
 	MainCategory     *MainCategory  `gorm:"foreignKey:MainCategoryID" json:"main_category,omitempty"`
+	
+	StationID        *uuid.UUID     `gorm:"type:uuid;column:id_station" json:"station_id"` // Always include in response
+	Station          *Station       `gorm:"foreignKey:StationID" json:"station,omitempty"`
+
 	RequiresInverter bool           `gorm:"column:requires_inverter;default:false" json:"requires_inverter"`
 	ColumnKey        string         `gorm:"column:column_key" json:"column_key"`
 	CreatedAt        time.Time      `json:"created_at"`
@@ -94,11 +98,10 @@ type Assign struct {
 	ProjectClassificationID uuid.UUID             `gorm:"type:uuid;column:id_project_classification" json:"id_project_classification"`
 	Classification          *ProjectClassification`gorm:"foreignKey:ProjectClassificationID" json:"classification,omitempty"`
 	
-	// DataWork stores the specific quantities e.g. {"pv_module": 10}
-	DataWork                AssetMetadata         `gorm:"column:data_work;serializer:json" json:"data_work"`
-
-	// DataResult stores the execution progress e.g. images, notes
-	DataResult              AssetMetadata         `gorm:"column:data_result;serializer:json" json:"data_result"`
+	// DataWork and DataResult removed as per user request (2026-01-17)
+	// These were used for the old JSON-based workflow.
+	// DataWork                AssetMetadata         `gorm:"column:data_work;serializer:json" json:"data_work"`
+	// DataResult              AssetMetadata         `gorm:"column:data_result;serializer:json" json:"data_result"`
 
     // Timeline
     StartTime               *time.Time            `gorm:"column:start_time" json:"start_time"`
@@ -124,6 +127,7 @@ type ProjectRepository interface {
 	GetAllMainCategories() ([]MainCategory, error)
 	GetClassificationByID(id uuid.UUID) (*ProjectClassification, error)
 	GetChildCategoriesByMainID(mainID uuid.UUID) ([]ChildCategory, error)
+	GetChildCategoriesByStationID(stationID uuid.UUID) ([]ChildCategory, error) // New Logic
 	// GetCharacteristicsByMainID removed as schema changed
 	// GetCharacteristicsByMainID(mainID uuid.UUID) ([]ProjectCharacteristic, error)
 	
@@ -135,10 +139,10 @@ type ProjectRepository interface {
     CreateAssign(a *Assign) error
 	GetAssignsByUserID(userID uuid.UUID) ([]Assign, error)
     GetAssignByID(id uuid.UUID) (*Assign, error)
-	UpdateAssignDataResult(id uuid.UUID, data AssetMetadata) error
+	// UpdateAssignDataResult removed
 	CheckProjectExistsInAssign(projectID uuid.UUID) (bool, error)
 	GetAssignsByProjectID(projectID uuid.UUID) ([]Assign, error)
-    UpdateAssign(a *Assign) error
+    // UpdateAssign removed
     GetAllAssigns() ([]Assign, error)
     GetDeletedAssigns() ([]Assign, error)
     GetDeletedAssignsByUsers(userIDs []uuid.UUID) ([]Assign, error)
@@ -165,7 +169,8 @@ type ProjectRepository interface {
     
     // Task Detail
     UpdateTaskDetailCheck(assignID, childID uuid.UUID, index int, checkStatus int) error
-    UpdateTaskDetailAccept(id uuid.UUID, accept int, note string) error
+    UpdateTaskDetailStatus(id uuid.UUID, updates map[string]interface{}) error
+    UpdateTaskDetailsStatusBulk(ids []uuid.UUID, updates map[string]interface{}) error
 
     // Statistics
     GetProjectStatusBreakdown() ([]ProjectStatusStat, error)
@@ -174,6 +179,10 @@ type ProjectRepository interface {
     
     // Sync
     SyncTaskDetails(assignID uuid.UUID, details []TaskDetail) error
+    
+    // Station Assignment Update (New Request)
+    UpdateStationAssignID(stationIDs []uuid.UUID, assignID uuid.UUID) error
+    GetStationIDsByChildConfigIDs(configIDs []uuid.UUID) ([]uuid.UUID, error)
 
     // Advanced Statistics
     GetDetailedStats(projectID string, timeUnit string, userID string) ([]TimeStat, error)
@@ -205,34 +214,67 @@ type CategoryStat struct {
     TaskCount    int64  `json:"task_count"`
 }
 
-// TaskDetail represents a specific granular task item (e.g., "Inverter 1")
+// TaskDetail represents a specific granular task item
+// NEW SCHEMA (2026-01-17): Restructured to link directly to Station and Process
 type TaskDetail struct {
 	ID              uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	AssignID        uuid.UUID      `gorm:"type:uuid;column:assign_id;index" json:"assign_id"`
+	AssignID        uuid.UUID      `gorm:"type:uuid;column:assign_id;index;not null" json:"assign_id"`
 	Assign          *Assign        `gorm:"foreignKey:AssignID" json:"assign,omitempty"`
-	ChildCategoryID uuid.UUID      `gorm:"type:uuid;column:child_category_id" json:"child_category_id"`
+	
+	// Child Category (for categorization)
+	ChildCategoryID *uuid.UUID     `gorm:"type:uuid;column:child_category_id" json:"child_category_id"`
 	ChildCategory   *ChildCategory `gorm:"foreignKey:ChildCategoryID" json:"child_category,omitempty"`
+	
+	// NEW: Direct link to Station
+	StationID       *uuid.UUID     `gorm:"type:uuid;column:station_id;index" json:"station_id"`
+	Station         *Station       `gorm:"foreignKey:StationID" json:"station,omitempty"` // Added for Preload
+	
+	// NEW: Process ID from station_child_configs
 	ProcessID       *uuid.UUID     `gorm:"type:uuid;column:process_id" json:"process_id"`
+	Process         *Process       `gorm:"foreignKey:ProcessID" json:"process,omitempty"` // Added for relation
+
+	// NEW: Project Timeline (from allocation UI)
+	ProjectStartTime *time.Time    `gorm:"column:project_start_time" json:"project_start_time"`
+	ProjectEndTime   *time.Time    `gorm:"column:project_end_time" json:"project_end_time"`
 	
-	// Replaced ItemIndex with Station/Inverter
-	StationName     *string        `gorm:"column:station_name" json:"station_name"`
-	InverterName    *string        `gorm:"column:inverter_name" json:"inverter_name"`
+	// NEW: Notes from allocation UI
+	DataNote        string         `gorm:"column:data_note;type:text" json:"data_note"`
 	
-	Status          string         `gorm:"column:status;default:'pending'" json:"status"` // pending, completed, issue
-	Note            string         `gorm:"column:note" json:"note"`
-	ImagePath       string         `gorm:"column:image_path" json:"image_path"`
-	Check           int            `gorm:"column:check;default:0" json:"check"`  // 0: default, 1: has photos (before/after)
-	Accept          int            `gorm:"column:accept;default:0" json:"accept"` // 0: pending, 1: accepted, -1: rejected
+	// NEW: Work note stored in MinIO (2026-01-20)
+	WorkNote        string         `gorm:"column:work_note;type:text" json:"work_note"`
 	
-	SubmittedAt     *time.Time     `gorm:"column:submitted_at" json:"submitted_at"`
-	ApprovalAt      *time.Time     `gorm:"column:approval_at" json:"approval_at"`
-	RejectedAt      *time.Time     `gorm:"column:rejected_at" json:"rejected_at"`
+	// NEW: Status fields (integer-based for clarity)
+	StatusWork      int            `gorm:"column:status_work;default:0" json:"status_work"`     // 0=pending, 1=in_progress, 2=completed
+	StatusSubmit    int            `gorm:"column:status_submit;default:0" json:"status_submit"` // 0=not_submitted, 1=submitted
+	StatusApprove   int            `gorm:"column:status_approve;default:0" json:"status_approve"` // 0=pending, 1=approved
+	StatusReject    int            `gorm:"column:status_reject;default:0" json:"status_reject"`   // 0=none, 1=rejected
 	
+	// Timestamps
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
+	SubmittedAt     *time.Time     `gorm:"column:submitted_at" json:"submitted_at"`
+	ApprovalAt      *time.Time     `gorm:"column:approval_at" json:"approval_at"`
+	// RejectedAt      *time.Time     `gorm:"column:rejected_at" json:"rejected_at"` // Removed per user request
+	RejectAt        *time.Time     `gorm:"column:reject_at" json:"reject_at,omitempty"` // Legacy field
+	NoteReject      string         `gorm:"column:note_reject" json:"note_reject"`
+	NoteApproval    string         `gorm:"column:note_approval" json:"note_approval"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// Process represents a specific process/step in a checklist
+type Process struct {
+	ID        uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Name      string         `gorm:"not null" json:"name"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (Process) TableName() string {
+	return "process"
 }
 
 func (TaskDetail) TableName() string {
 	return "task_details"
 }
+

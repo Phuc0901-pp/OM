@@ -16,6 +16,17 @@ import GlassCard from '../../components/common/GlassCard';
 import PremiumButton from '../../components/common/PremiumButton';
 import { motion } from 'framer-motion';
 
+// Helper to determine status based on new fields
+const getTaskStatus = (td: any) => {
+    if (!td) return 'pending';
+    // Logic ưu tiên: Approved > Rejected > Submitted > In Progress > Pending
+    if (td.status_approve === 1) return 'approved';
+    if (td.status_reject === 1) return 'rejected';
+    if (td.status_submit === 1) return 'submitted';
+    if (td.status_work === 1) return 'in_progress';
+    return 'pending';
+};
+
 const UserDashboard = () => {
     const navigate = useNavigate();
     const [allocations, setAllocations] = useState<Allocation[]>([]);
@@ -71,6 +82,11 @@ const UserDashboard = () => {
                     return alloc;
                 });
 
+                console.log("Full Allocations Response:", allocRes.data);
+                if (allocRes.data.length > 0 && allocRes.data[0].task_details) {
+                    console.log("Sample Task Detail:", allocRes.data[0].task_details[0]);
+                }
+
                 setAllocations(mappedAllocations);
                 calculateStats(mappedAllocations);
                 extractRecentTasks(mappedAllocations);
@@ -90,58 +106,53 @@ const UserDashboard = () => {
         let total = 0, approved = 0, rejected = 0, submitted = 0, inProgress = 0, pending = 0;
 
         allocations.forEach(alloc => {
-            const mainCategories = alloc.data_work?.main_categories || [];
-            mainCategories.forEach(mainCat => {
-                const childCats = mainCat.child_categories || [];
-                childCats.forEach(child => {
-                    const quantity = Number(child.quantity || 1);
-                    const taskDetails = alloc.task_details?.filter(td => td.child_category_id === child.id) || [];
+            // New logic: Iterate directly over task_details (data_work is legacy/deprecated)
+            const tasks = alloc.task_details || [];
+            total += tasks.length;
 
-                    if (taskDetails.length === 0) {
-                        total += quantity;
-                        pending += quantity;
-                    } else {
-                        taskDetails.forEach(td => {
-                            total++;
-                            const status = determineTaskStatus(td);
-                            switch (status) {
-                                case 'approved': approved++; break;
-                                case 'rejected': rejected++; break;
-                                case 'submitted': submitted++; break;
-                                case 'in_progress': inProgress++; break;
-                                default: pending++; break;
-                            }
-                        });
-                    }
-                });
+            tasks.forEach(td => {
+                const status = getTaskStatus(td);
+                switch (status) {
+                    case 'approved': approved++; break;
+                    case 'rejected': rejected++; break;
+                    case 'submitted': submitted++; break;
+                    case 'in_progress': inProgress++; break;
+                    default: pending++; break;
+                }
             });
         });
 
+        console.log("Calculated Stats:", { total, approved, rejected, submitted, inProgress, pending });
         setStats({ total, approved, rejected, submitted, inProgress, pending });
     };
 
     const extractRecentTasks = (allocations: Allocation[]) => {
-        const tasks: any[] = [];
-        allocations.slice(0, 5).forEach(alloc => {
-            const mainCat = alloc.data_work?.main_categories?.[0];
-            if (mainCat) {
-                const child = mainCat.child_categories?.[0];
-                if (child) {
-                    const taskDetail = alloc.task_details?.find(td => td.child_category_id === child.id);
-                    tasks.push({
-                        id: alloc.id,
-                        projectName: alloc.project?.project_name || 'N/A',
-                        categoryName: mainCat.name,
-                        itemName: child.name,
-                        status: taskDetail ? determineTaskStatus(taskDetail) : 'pending',
-                        timestamp: alloc.data_work?.timestamp,
-                        startTime: alloc.start_time,
-                        endTime: alloc.end_time
-                    });
-                }
-            }
+        const allTasks: any[] = [];
+
+        allocations.forEach(alloc => {
+            const tasks = alloc.task_details || [];
+            tasks.forEach(td => {
+                allTasks.push({
+                    id: td.id, // Use task detail ID
+                    projectName: alloc.project?.project_name || 'N/A',
+                    categoryName: td.child_category?.main_category?.name || 'N/A',
+                    itemName: td.child_category?.name || 'N/A',
+                    status: getTaskStatus(td),
+                    timestamp: td.updated_at || alloc.data_work?.timestamp, // Fallback to alloc timestamp if needed
+                    startTime: alloc.start_time,
+                    endTime: alloc.end_time
+                });
+            });
         });
-        setRecentTasks(tasks);
+
+        // Sort by timestamp desc (most recent first)
+        allTasks.sort((a, b) => {
+            const timeA = new Date(a.timestamp || 0).getTime();
+            const timeB = new Date(b.timestamp || 0).getTime();
+            return timeB - timeA;
+        });
+
+        setRecentTasks(allTasks.slice(0, 5));
     };
 
     const extractUpcomingDeadlines = (allocations: Allocation[]) => {
@@ -410,6 +421,43 @@ const UserDashboard = () => {
                 </div>
             </GlassCard>
 
+            {/* Quick Actions */}
+            <GlassCard className="relative overflow-hidden shadow-2xl shadow-indigo-500/10">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-600/10 rounded-full blur-3xl"></div>
+                <div className="relative z-10">
+                    <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><LayoutGrid className="w-6 h-6 text-indigo-600" /> Thao tác nhanh</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <button onClick={() => navigate('/user/environment')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
+                            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl transition-all"></div>
+                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
+                                <Wrench className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
+                                <h3 className="font-bold text-lg mb-1">Bắt đầu làm việc</h3>
+                                <p className="text-sm opacity-90">Xem danh sách và thực hiện</p>
+                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                            </div>
+                        </button>
+                        <button onClick={() => navigate('/user/statistics')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl transition-all"></div>
+                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
+                                <BarChart3 className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
+                                <h3 className="font-bold text-lg mb-1">Xem thống kê</h3>
+                                <p className="text-sm opacity-90">Báo cáo hiệu suất</p>
+                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                            </div>
+                        </button>
+                        <button onClick={() => navigate('/user/settings')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
+                            <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl transition-all"></div>
+                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
+                                <AlertCircle className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
+                                <h3 className="font-bold text-lg mb-1">Cài đặt</h3>
+                                <p className="text-sm opacity-90">Quản lý tài khoản</p>
+                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </GlassCard>
+
             {/* Charts & Recent Tasks */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <GlassCard className="flex flex-col">
@@ -502,42 +550,7 @@ const UserDashboard = () => {
                 </GlassCard>
             </div>
 
-            {/* Quick Actions */}
-            <GlassCard className="relative overflow-hidden shadow-2xl shadow-indigo-500/10">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-600/10 rounded-full blur-3xl"></div>
-                <div className="relative z-10">
-                    <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><LayoutGrid className="w-6 h-6 text-indigo-600" /> Thao tác nhanh</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <button onClick={() => navigate('/user/environment')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
-                            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl transition-all"></div>
-                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
-                                <Wrench className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
-                                <h3 className="font-bold text-lg mb-1">Bắt đầu làm việc</h3>
-                                <p className="text-sm opacity-90">Xem danh sách và thực hiện</p>
-                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                            </div>
-                        </button>
-                        <button onClick={() => navigate('/user/statistics')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
-                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl transition-all"></div>
-                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
-                                <BarChart3 className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
-                                <h3 className="font-bold text-lg mb-1">Xem thống kê</h3>
-                                <p className="text-sm opacity-90">Báo cáo hiệu suất</p>
-                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                            </div>
-                        </button>
-                        <button onClick={() => navigate('/user/settings')} className="group relative overflow-hidden p-1 rounded-2xl transition-all duration-300 hover:-translate-y-1 text-left">
-                            <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl transition-all"></div>
-                            <div className="relative h-full bg-white/10 backdrop-blur-sm p-6 flex flex-col items-start text-white">
-                                <AlertCircle className="w-8 h-8 mb-4 p-1.5 bg-white/20 rounded-lg" />
-                                <h3 className="font-bold text-lg mb-1">Cài đặt</h3>
-                                <p className="text-sm opacity-90">Quản lý tài khoản</p>
-                                <ArrowRight className="absolute bottom-6 right-6 w-5 h-5 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            </GlassCard>
+
 
             <CheckInModal isOpen={showCheckInModal} onClose={() => setShowCheckInModal(false)} onSubmit={handleCheckInSubmit} loading={attendanceLoading} />
         </motion.div>

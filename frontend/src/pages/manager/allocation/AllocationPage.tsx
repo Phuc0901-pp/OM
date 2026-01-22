@@ -3,7 +3,7 @@ import {
     Save, Check, Plus, X, ChevronRight, CheckCircle2,
     LayoutGrid, Calendar, Users, Zap, Layers, Search,
     AlertCircle, Briefcase, ChevronDown, Rocket,
-    MoreHorizontal, Filter, ArrowRight
+    MoreHorizontal, Filter, ArrowRight, HelpCircle
 } from 'lucide-react';
 import api from '../../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,6 +29,25 @@ interface Project {
     project_id: string;
     project_name: string;
     location?: string;
+}
+
+interface Station {
+    id: string;
+    name: string;
+    id_main_category: string;
+    id_project: string;
+    child_category_ids?: string[];
+    child_configs?: StationChildConfig[];
+}
+
+interface StationChildConfig {
+    id: string; // Required for Option B task details creation
+    child_category_id: string;
+    guide_text?: string;
+    image_count?: number;
+    process_ids?: string[];
+    guide_images?: string[];
+    project_classification_id?: string;
 }
 
 const ManagerAllocationPage = () => {
@@ -57,11 +76,14 @@ const ManagerAllocationPage = () => {
     const [childCategoriesMap, setChildCategoriesMap] = useState<Record<string, any[]>>({});
     const [childAreaNames, setChildAreaNames] = useState<Record<string, string>>({}); // New State to store "Mái", "Nhà máy" etc.
 
-    // Creation States
-    const [isAddingMain, setIsAddingMain] = useState(false);
-    const [newMainName, setNewMainName] = useState("");
-    const [addingChildFor, setAddingChildFor] = useState<string | null>(null);
-    const [newChildName, setNewChildName] = useState("");
+    // Station State
+    const [stationsMap, setStationsMap] = useState<Record<string, Station[]>>({});
+
+    // Process Names Map (id -> name)
+    const [processMap, setProcessMap] = useState<Record<string, string>>({});
+
+    // Guide Popup State
+    const [guidePopup, setGuidePopup] = useState<{ title: string, text: string, images: string[] } | null>(null);
 
     // UI States
     const [loading, setLoading] = useState(false);
@@ -77,15 +99,23 @@ const ManagerAllocationPage = () => {
                 const currentUser = storedUser ? JSON.parse(storedUser) : null;
                 const currentUserId = currentUser?.id;
 
-                const [projRes, classRes, mainRes] = await Promise.all([
+                const [projRes, classRes, mainRes, processRes] = await Promise.all([
                     api.get('/projects'),
                     api.get('/project-classification'),
-                    api.get('/main-categories')
+                    api.get('/main-categories'),
+                    api.get('/admin/tables/process').catch(() => ({ data: [] })) // Fetch processes
                 ]);
 
                 setProjects(projRes.data);
                 setClassifications(classRes.data);
                 setMainCategories(mainRes.data);
+
+                // Build process map (id -> name)
+                const pMap: Record<string, string> = {};
+                (processRes.data || []).forEach((p: { id: string, name?: string }) => {
+                    if (p.id) pMap[p.id] = p.name || 'Unknown';
+                });
+                setProcessMap(pMap);
 
                 if (currentUserId) {
                     try {
@@ -204,12 +234,41 @@ const ManagerAllocationPage = () => {
 
     const toSnakeCase = (str: string) => str.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 
+    const fetchStationsForMain = async (mainCategoryId: string) => {
+        if (!selectedProject) return;
+        try {
+            const res = await api.get('/stations', {
+                params: { main_category_id: mainCategoryId, project_id: selectedProject }
+            });
+            const stations: Station[] = Array.isArray(res.data) ? res.data : [];
+            setStationsMap(prev => ({ ...prev, [mainCategoryId]: stations }));
+        } catch (error) {
+            console.error("Failed to fetch stations", error);
+        }
+    };
+
+    useEffect(() => {
+        if (!selectedProject || mainCategories.length === 0) return;
+        mainCategories.forEach(cat => fetchStationsForMain(cat.id));
+    }, [selectedProject, mainCategories]);
+
     const handleCategoryExpand = (catId: string, expanded: boolean) => {
         setExpandedCategories(prev => ({ ...prev, [catId]: expanded }));
     };
 
     const toggleMainCat = (catId: string, checked: boolean) => {
         setSelectedMainCats(prev => ({ ...prev, [catId]: checked }));
+
+        // Auto-select/deselect all children
+        const children = childCategoriesMap[catId] || [];
+        setSelectedChildCats(prev => {
+            const next = { ...prev };
+            children.forEach(child => {
+                next[child.id] = checked;
+            });
+            return next;
+        });
+
         if (checked) {
             setExpandedCategories(prev => ({ ...prev, [catId]: true }));
         }
@@ -220,6 +279,19 @@ const ManagerAllocationPage = () => {
         if (checked) {
             setSelectedMainCats(prev => ({ ...prev, [mainId]: true }));
             setExpandedCategories(prev => ({ ...prev, [mainId]: true }));
+        }
+    };
+
+    const toggleStation = (station: Station, checked: boolean) => {
+        const childIds = station.child_category_ids || [];
+        setSelectedChildCats(prev => {
+            const next = { ...prev };
+            childIds.forEach(id => next[id] = checked);
+            return next;
+        });
+        if (checked) {
+            setSelectedMainCats(prev => ({ ...prev, [station.id_main_category]: true }));
+            setExpandedCategories(prev => ({ ...prev, [station.id_main_category]: true }));
         }
     };
 
@@ -246,28 +318,7 @@ const ManagerAllocationPage = () => {
         });
     };
 
-    const handleAddMainCategory = async () => {
-        if (!newMainName.trim()) return;
-        try {
-            const res = await api.post('/main-categories', { name: newMainName });
-            setMainCategories([...mainCategories, res.data]);
-            setNewMainName("");
-            setIsAddingMain(false);
-        } catch (error) { }
-    };
 
-    const handleAddChildCategory = async (mainId: string) => {
-        if (!newChildName.trim()) return;
-        try {
-            const res = await api.post('/child-categories', { name: newChildName, main_category_id: mainId });
-            setChildCategoriesMap(prev => ({
-                ...prev,
-                [mainId]: [...(prev[mainId] || []), res.data]
-            }));
-            setNewChildName("");
-            setAddingChildFor(null);
-        } catch (error) { }
-    };
 
     const handleSubmit = async () => {
         setLoading(true);
@@ -302,10 +353,32 @@ const ManagerAllocationPage = () => {
                 };
             });
 
+        // Collect all station_child_config_ids for Option B task details creation
+        const stationChildConfigIds: string[] = [];
+        mainCategories
+            .filter(mainCat => selectedMainCats[mainCat.id])
+            .forEach(mainCat => {
+                const stations = stationsMap[mainCat.id] || [];
+                stations.forEach(station => {
+                    (station.child_configs || []).forEach(config => {
+                        // Only include configs that match selected classification and selected child categories
+                        const matchesClassification = !selectedClassification ||
+                            !config.project_classification_id ||
+                            config.project_classification_id === selectedClassification;
+                        const matchesChild = selectedChildCats[config.child_category_id];
+
+                        if (matchesClassification && matchesChild && config.id) {
+                            stationChildConfigIds.push(config.id);
+                        }
+                    });
+                });
+            });
+
         const payload = {
             user_ids: selectedUsers,
             id_project: selectedProject,
             id_project_classification: selectedClassification,
+            station_child_config_ids: stationChildConfigIds, // Option B: Pre-create task_details
             data_work: {
                 timestamp: new Date().toISOString(),
                 project: project?.project_name,
@@ -458,120 +531,198 @@ const ManagerAllocationPage = () => {
                             <GlassCard className="min-h-[600px] flex flex-col">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-emerald-600" /> Phạm Vi</h3>
-                                    <button onClick={() => setIsAddingMain(true)} className="flex items-center gap-1 text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg transition-colors"><Plus className="w-3 h-3" /> Thêm</button>
                                 </div>
 
-                                {/* Stats & Inputs */}
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-100 flex flex-col items-center justify-center text-center">
-                                        <span className="text-xs font-bold text-emerald-600 uppercase">Nhà Trạm</span>
-                                        <span className="text-3xl font-black text-emerald-700">{quantities['inv_station'] || 0}</span>
-                                    </div>
-                                    <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 flex flex-col items-center justify-center text-center">
-                                        <span className="text-xs font-bold text-indigo-600 uppercase">Inverter</span>
-                                        <span className="text-3xl font-black text-indigo-700">{quantities['inverter'] || 0}</span>
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    {["Station", "Inverter"].map(label => (
-                                        <div key={label} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Nhập SL {label}</p>
-                                            <input type="number" min="0" placeholder="0" className="w-full font-bold text-lg outline-none text-slate-800"
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value) || 0;
-                                                    setQuantities(prev => {
-                                                        const next = { ...prev };
-                                                        mainCategories.forEach(cat => {
-                                                            if ((label === "Inverter" && cat.name.toLowerCase().includes("inverter")) || (label === "Station" && !cat.name.toLowerCase().includes("inverter"))) {
-                                                                next[toSnakeCase(cat.name)] = val;
-                                                            }
-                                                        });
-                                                        return next;
-                                                    });
-                                                    setCharValues(prev => {
-                                                        const next = { ...prev };
-                                                        mainCategories.forEach(cat => {
-                                                            const isInverter = cat.name.toLowerCase().includes("inverter");
-                                                            if ((label === "Inverter" && isInverter) || (label === "Station" && !isInverter)) {
-                                                                const children = childCategoriesMap[cat.id] || [];
-                                                                children.forEach(child => next[child.id] = FIXED_QUANTITY_ITEMS.includes(child.name) ? "1" : String(val));
-                                                            }
-                                                        });
-                                                        return next;
-                                                    });
-                                                    setSelectedMainCats(prev => {
-                                                        const next = { ...prev };
-                                                        mainCategories.forEach(cat => {
-                                                            const isInverter = cat.name.toLowerCase().includes("inverter");
-                                                            if ((label === "Inverter" && isInverter) || (label === "Station" && !isInverter)) next[cat.id] = true;
-                                                        });
-                                                        return next;
-                                                    });
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
 
-                                {isAddingMain && (
-                                    <div className="mb-4 flex items-center gap-2 p-2 bg-white border border-indigo-200 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-2">
-                                        <input autoFocus type="text" value={newMainName} onChange={e => setNewMainName(e.target.value)} placeholder="Tên hạng mục..." className="flex-1 bg-transparent outline-none text-sm font-medium" onKeyDown={e => e.key === 'Enter' && handleAddMainCategory()} />
-                                        <button onClick={handleAddMainCategory} className="p-1.5 bg-emerald-500 text-white rounded-lg"><Check className="w-3 h-3" /></button>
-                                        <button onClick={() => setIsAddingMain(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-3 h-3" /></button>
-                                    </div>
-                                )}
+
 
                                 {/* Category List */}
                                 <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
                                     {mainCategories.map(mainCat => {
-                                        const isExpanded = expandedCategories[mainCat.id] || false;
-                                        const isSelected = selectedMainCats[mainCat.id] || false;
-                                        const children = childCategoriesMap[mainCat.id] || [];
+                                        const isMainExpanded = expandedCategories[mainCat.id] || false;
+                                        const isMainSelected = selectedMainCats[mainCat.id] || false;
                                         const quantity = quantities[toSnakeCase(mainCat.name)] || 0;
+                                        const stations = stationsMap[mainCat.id] || [];
+
+                                        // PRE-CALCULATE VISIBILITY based on Config Existence & Filter
+                                        const visibleStationsCount = stations.reduce((count, station) => {
+                                            const stationChildrenIds = station.child_category_ids || [];
+                                            const hasVisibleChild = stationChildrenIds.some(childId => {
+                                                const config = (station.child_configs || []).find(c => c.child_category_id === childId);
+                                                if (!config) return false; // Must be configured
+                                                if (selectedClassification && config.project_classification_id !== selectedClassification) return false;
+                                                return true;
+                                            });
+                                            return hasVisibleChild ? count + 1 : count;
+                                        }, 0);
+
+                                        // Hide Main Category if no visible stations
+                                        if (visibleStationsCount === 0) return null;
+
+                                        // Determine children to render (either via stations or flat list)
+                                        const hasStations = stations.length > 0;
+                                        const flatChildren = childCategoriesMap[mainCat.id] || [];
 
                                         return (
-                                            <div key={mainCat.id} className={`border rounded-xl transition-all duration-300 overflow-hidden ${isSelected ? 'border-emerald-500/50 bg-emerald-50/10 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-300'}`}>
+                                            <div key={mainCat.id} className={`border rounded-xl transition-all duration-300 overflow-hidden ${isMainSelected ? 'border-emerald-500/50 bg-emerald-50/10 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-300'}`}>
                                                 <div className="p-3 flex items-center">
-                                                    <div onClick={(e) => { e.stopPropagation(); toggleMainCat(mainCat.id, !isSelected); }} className={`w-5 h-5 rounded border mr-3 flex items-center justify-center cursor-pointer transition-colors ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}>
-                                                        {isSelected && <Check className="w-3 h-3" />}
+                                                    <div onClick={(e) => { e.stopPropagation(); toggleMainCat(mainCat.id, !isMainSelected); }} className={`w-5 h-5 rounded border mr-3 flex items-center justify-center cursor-pointer transition-colors ${isMainSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                        {isMainSelected && <Check className="w-3 h-3" />}
                                                     </div>
-                                                    <div onClick={() => handleCategoryExpand(mainCat.id, !isExpanded)} className={`mr-2 cursor-pointer transition-transform duration-300 ${isExpanded ? 'rotate-90 text-slate-800' : 'text-slate-400'}`}><ChevronRight className="w-4 h-4" /></div>
-                                                    <span onClick={() => handleCategoryExpand(mainCat.id, !isExpanded)} className="flex-1 font-bold text-sm text-slate-700 cursor-pointer">{mainCat.name}</span>
+                                                    <div className="flex-1 cursor-pointer" onClick={() => handleCategoryExpand(mainCat.id, !isMainExpanded)}>
+                                                        <h4 className={`font-bold text-sm ${isMainSelected ? 'text-emerald-900' : 'text-slate-700'}`}>{mainCat.name}</h4>
+                                                    </div>
 
-                                                    {isExpanded && <input type="number" className="w-10 bg-transparent text-right font-bold text-slate-800 text-sm outline-none mr-2" value={quantity || ''} placeholder="-" onChange={e => handleMainQuantityChange(mainCat, e.target.value)} />}
-                                                    <button onClick={e => { e.stopPropagation(); setAddingChildFor(mainCat.id); }} className="text-slate-300 hover:text-emerald-500"><Plus className="w-4 h-4" /></button>
+                                                    <div className="ml-2 cursor-pointer" onClick={() => handleCategoryExpand(mainCat.id, !isMainExpanded)}>
+                                                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isMainExpanded ? 'rotate-180' : ''}`} />
+                                                    </div>
                                                 </div>
 
                                                 <AnimatePresence>
-                                                    {isExpanded && (
-                                                        <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="bg-slate-50 border-t border-slate-100 pl-11 pr-3 py-2 space-y-1">
-                                                            {children.map(child => {
-                                                                const isChildSelected = selectedChildCats[child.id] || false;
-                                                                return (
-                                                                    <div key={child.id} className="flex items-center justify-between py-1 group">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div onClick={() => toggleChildCat(child.id, mainCat.id, !isChildSelected)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer ${isChildSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400 bg-white'}`}>{isChildSelected && <Check className="w-2.5 h-2.5 text-white" />}</div>
-                                                                            <span className={`text-xs font-medium ${isChildSelected ? 'text-slate-800' : 'text-slate-500'}`}>{child.name}</span>
-                                                                        </div>
-                                                                        <div className="flex items-center">
-                                                                            {childAreaNames[child.id] && <span className="text-[10px] text-slate-400 mr-2 italic font-medium">{childAreaNames[child.id]}</span>}
-                                                                            <input
-                                                                                disabled={(!isChildSelected && !selectedMainCats[mainCat.id]) || FIXED_QUANTITY_ITEMS.includes(child.name)}
-                                                                                type="number"
-                                                                                className={`w-12 text-right bg-transparent text-xs font-bold outline-none border-b border-transparent focus:border-emerald-300 ${(!isChildSelected && !selectedMainCats[mainCat.id]) ? 'opacity-30' : ''}`}
-                                                                                value={FIXED_QUANTITY_ITEMS.includes(child.name) ? "1" : (charValues[child.id] || '')}
-                                                                                onChange={e => handleCharChange(child.id, e.target.value)}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {addingChildFor === mainCat.id && (
-                                                                <div className="flex items-center gap-2 py-1 animate-in fade-in">
-                                                                    <div className="w-1 h-1 bg-emerald-400 rounded-full"></div>
-                                                                    <input autoFocus type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder="Tên hoạt động..." className="flex-1 bg-transparent text-xs outline-none text-emerald-700" onKeyDown={e => e.key === 'Enter' && handleAddChildCategory(mainCat.id)} />
-                                                                    <button onClick={() => handleAddChildCategory(mainCat.id)} className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded font-bold">Lưu</button>
+                                                    {isMainExpanded && (
+                                                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-100 bg-white/50">
+
+                                                            {/* Station Loop */}
+                                                            {hasStations ? (
+                                                                <div className="p-2 space-y-2">
+                                                                    {stations.map(station => {
+                                                                        // Station Logic: Check if all its children are selected?
+                                                                        // Simplification: Check if ANY child selected for visual Indication?
+                                                                        const stationChildrenIds = station.child_category_ids || [];
+
+                                                                        // FILTERING LOGIC
+                                                                        const visibleChildrenIds = stationChildrenIds.filter(childId => {
+                                                                            const config = (station.child_configs || []).find(c => c.child_category_id === childId);
+                                                                            if (!config) return false; // Strict check: Must be configured
+                                                                            if (selectedClassification && config.project_classification_id !== selectedClassification) return false;
+                                                                            return true;
+                                                                        });
+
+                                                                        if (visibleChildrenIds.length === 0) return null;
+
+                                                                        const isAllSelected = visibleChildrenIds.length > 0 && visibleChildrenIds.every(id => selectedChildCats[id]);
+                                                                        const isAnySelected = visibleChildrenIds.some(id => selectedChildCats[id]);
+
+                                                                        return (
+                                                                            <div key={station.id} className="border border-slate-100 rounded-lg bg-slate-50/50 overflow-hidden">
+                                                                                <div className="p-2 flex items-center bg-slate-100/50 border-b border-slate-100">
+                                                                                    <div
+                                                                                        onClick={() => {
+                                                                                            const newState = !isAllSelected;
+                                                                                            setSelectedChildCats(prev => {
+                                                                                                const next = { ...prev };
+                                                                                                visibleChildrenIds.forEach(id => { next[id] = newState; });
+                                                                                                return next;
+                                                                                            });
+                                                                                        }}
+                                                                                        className={`w-4 h-4 rounded border mr-2 flex items-center justify-center cursor-pointer ${isAnySelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}
+                                                                                    >
+                                                                                        {isAnySelected && <Check className="w-2.5 h-2.5" />}
+                                                                                    </div>
+                                                                                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{station.name}</span>
+                                                                                </div>
+
+                                                                                <div className="p-2 space-y-1">
+                                                                                    {visibleChildrenIds.map(childId => {
+                                                                                        const child = flatChildren.find(c => c.id === childId);
+                                                                                        if (!child) return null;
+
+                                                                                        const isChildSelected = selectedChildCats[childId] || false;
+                                                                                        const areaName = childAreaNames[childId] || station.name;
+
+                                                                                        // Config Lookup
+                                                                                        const childConfig = (station.child_configs || []).find(c => c.child_category_id === childId);
+                                                                                        const hasGuide = childConfig && (childConfig.guide_text || (childConfig.guide_images && childConfig.guide_images.length > 0));
+
+                                                                                        // Get process names from process_ids
+                                                                                        const processNames: string[] = [];
+                                                                                        if (childConfig?.process_ids && Array.isArray(childConfig.process_ids)) {
+                                                                                            childConfig.process_ids.forEach((pid: string) => {
+                                                                                                if (processMap[pid]) processNames.push(processMap[pid]);
+                                                                                            });
+                                                                                        }
+
+                                                                                        return (
+                                                                                            <div key={child.id} className={`flex items-center justify-between p-2 rounded-lg text-sm transition-colors ${isChildSelected ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-slate-50 border border-transparent'}`}>
+                                                                                                <div className="flex items-center gap-3 overflow-hidden flex-1">
+                                                                                                    <div onClick={(e) => { e.stopPropagation(); toggleChildCat(child.id, mainCat.id, !isChildSelected); }} className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors ${isChildSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                                        {isChildSelected && <Check className="w-3 h-3" />}
+                                                                                                    </div>
+                                                                                                    <div className="min-w-0 flex flex-col gap-0.5">
+                                                                                                        <div className="flex items-center gap-2">
+                                                                                                            <div className={`font-medium truncate ${isChildSelected ? 'text-emerald-900' : 'text-slate-600'}`}>{child.name}</div>
+                                                                                                            {hasGuide && (
+                                                                                                                <div
+                                                                                                                    onClick={(e) => {
+                                                                                                                        e.stopPropagation();
+                                                                                                                        let imgs = childConfig?.guide_images || [];
+                                                                                                                        setGuidePopup({
+                                                                                                                            title: child.name,
+                                                                                                                            text: childConfig?.guide_text || "",
+                                                                                                                            images: imgs
+                                                                                                                        });
+                                                                                                                    }}
+                                                                                                                    className="bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 p-1 rounded-full cursor-pointer transition-colors"
+                                                                                                                    title="Xem hướng dẫn"
+                                                                                                                >
+                                                                                                                    <HelpCircle className="w-3.5 h-3.5" />
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                        <div className="flex items-center gap-3 text-xs">
+                                                                                                            {processNames.length > 0 && (
+                                                                                                                <span className="text-indigo-600">
+                                                                                                                    📋 {processNames.join(', ')}
+                                                                                                                </span>
+                                                                                                            )}
+                                                                                                            {(childConfig?.image_count ?? 0) > 0 && (
+                                                                                                                <span className="text-amber-600">
+                                                                                                                    📷 {childConfig?.image_count} ảnh
+                                                                                                                </span>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+
+                                                                                                {isChildSelected && (
+                                                                                                    <div className="flex items-center gap-2">
+                                                                                                        {/* Unit name removed as per user request */}
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            ) : (
+                                                                // Fallback: No Stations (Flat List)
+                                                                <div className="p-2 space-y-1">
+                                                                    {flatChildren.map(child => {
+                                                                        const isChildSelected = selectedChildCats[child.id] || false;
+                                                                        const areaName = childAreaNames[child.id] || "";
+
+                                                                        return (
+                                                                            <div key={child.id} className={`flex items-center justify-between p-2 rounded-lg text-sm transition-colors ${isChildSelected ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-slate-50 border border-transparent'}`}>
+                                                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                                                    <div onClick={(e) => { e.stopPropagation(); toggleChildCat(child.id, mainCat.id, !isChildSelected); }} className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors ${isChildSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                        {isChildSelected && <Check className="w-3 h-3" />}
+                                                                                    </div>
+                                                                                    <div className="min-w-0">
+                                                                                        <div className={`font-medium truncate ${isChildSelected ? 'text-emerald-900' : 'text-slate-600'}`}>{child.name}</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {isChildSelected && (
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {/* Unit name removed */}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             )}
                                                         </motion.div>
@@ -613,6 +764,57 @@ const ManagerAllocationPage = () => {
                                 </div>
                             </GlassCard>
                         </div>
+                        {/* Guide Popup Modal */}
+                        <AnimatePresence>
+                            {guidePopup && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+                                    <motion.div
+                                        initial={{ scale: 0.9, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.9, opacity: 0 }}
+                                        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]"
+                                    >
+                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                                <HelpCircle className="w-5 h-5 text-indigo-600" />
+                                                Hướng dẫn: {guidePopup.title}
+                                            </h3>
+                                            <button onClick={() => setGuidePopup(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                                            {guidePopup.text ? (
+                                                <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-slate-700 leading-relaxed whitespace-pre-line">
+                                                    {guidePopup.text}
+                                                </div>
+                                            ) : (
+                                                <p className="text-slate-400 italic text-center">Chua có hướng dẫn text.</p>
+                                            )}
+
+                                            {guidePopup.images && guidePopup.images.length > 0 && (
+                                                <div className="space-y-3">
+                                                    <h4 className="font-bold text-sm text-slate-700 uppercase tracking-wider">Hình ảnh mẫu ({guidePopup.images.length})</h4>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                                        {guidePopup.images.map((img, idx) => (
+                                                            <div key={idx} className="group relative aspect-video rounded-lg overflow-hidden border border-slate-200 cursor-pointer shadow-sm hover:shadow-md transition-all" onClick={() => window.open(img, '_blank')}>
+                                                                <img src={img} alt={`Guide ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                    <span className="bg-black/70 text-white text-xs px-2 py-1 rounded-full">Xem</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="p-4 bg-slate-50 border-t border-slate-100 text-right">
+                                            <PremiumButton onClick={() => setGuidePopup(null)} variant="primary" size="sm">Đóng</PremiumButton>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            )}
+                        </AnimatePresence>
                     </>
                 )}
             </div>

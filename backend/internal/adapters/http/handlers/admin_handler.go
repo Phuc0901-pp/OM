@@ -29,6 +29,10 @@ func (h *AdminHandler) isAllowed(tableName string) bool {
 		"roles":                   true,
 		"task_details":            true,
 		"teams":                   true,
+		"stations":                true,
+		"process":                 true, // Often accessed as 'process' or 'processes' depending on creation
+		"processes":               true,
+		"station_child_configs":   true,
 	}
 	
 	if allowedTables[tableName] {

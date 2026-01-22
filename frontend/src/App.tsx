@@ -13,7 +13,7 @@ const AdminManagementPage = lazy(() => import('./pages/admin/management/Manageme
 const AdminReportsPage = lazy(() => import('./pages/admin/reports/ReportsPage'));
 const AdminOperationsPage = lazy(() => import('./pages/admin/operations/OperationsPage'));
 const AdminDatabasePage = lazy(() => import('./pages/admin/database/AdminDatabasePage'));
-const ProjectSetupPage = lazy(() => import('./pages/admin/management/ProjectSetupPage'));
+const ProjectSetupPage = lazy(() => import('./pages/admin/management/projectSetup'));
 
 // Manager pages
 const ManagerProfilePage = lazy(() => import('./pages/manager/profile/ManagerProfilePage'));

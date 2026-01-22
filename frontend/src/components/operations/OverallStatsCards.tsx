@@ -101,18 +101,45 @@ const OverallStatsCards: React.FC<OverallStatsCardsProps> = ({ tasks }) => {
 
     // Compute stats
     const stats = useMemo(() => {
-        // Completed: Filter by time range
+        // Completed: status_approve = 1 (filter by time range for completed)
         const completed = filteredTasks.filter(t => {
-            if (t.accept !== 1 || !t.approvalAt) return false;
+            // Use status_approve OR accept for backwards compatibility
+            const isApproved = t.status_approve === 1 || t.accept === 1;
+            if (!isApproved || !t.approvalAt) return false;
             const approvalDate = new Date(t.approvalAt);
+            if (isNaN(approvalDate.getTime())) return false;
             return isSameDay(approvalDate, dateRange.start) || isAfter(approvalDate, dateRange.start);
         }).length;
 
-        // Current Snapshot (Backlog) - irrespective of time range
-        const pendingReview = filteredTasks.filter(t => t.check === 3 && t.accept === 0).length;
-        const needsChanges = filteredTasks.filter(t => t.accept === -1).length;
-        const inProgress = filteredTasks.filter(t => (t.check === 1 || t.check === 2) && t.accept === 0).length;
-        const notStarted = filteredTasks.filter(t => t.check === 0).length;
+        // Pending Review: status_approve = 0, status_reject = 0, status_submit = 1
+        const pendingReview = filteredTasks.filter(t => {
+            const statusApprove = t.status_approve ?? t.accept ?? 0;
+            const statusReject = t.status_reject ?? 0;
+            const statusSubmit = t.status_submit ?? (t.check === 3 ? 1 : 0);
+            return statusApprove === 0 && statusReject === 0 && statusSubmit === 1;
+        }).length;
+
+        // Needs Changes: status_approve = 0, status_reject = 1, status_submit = 1
+        const needsChanges = filteredTasks.filter(t => {
+            const statusApprove = t.status_approve ?? t.accept ?? 0;
+            const statusReject = t.status_reject ?? 0;
+            const statusSubmit = t.status_submit ?? (t.check === 3 ? 1 : 0);
+            return statusApprove === 0 && statusReject === 1 && statusSubmit === 1;
+        }).length;
+
+        // In Progress: status_approve = 0, status_work = 1 (or check = 1 or 2)
+        const inProgress = filteredTasks.filter(t => {
+            const statusApprove = t.status_approve ?? t.accept ?? 0;
+            const statusWork = t.status_work ?? t.check ?? 0;
+            return statusApprove === 0 && statusWork >= 1 && statusWork <= 2;
+        }).length;
+
+        // Not Started: status_work = 0 (or check = 0)
+        const notStarted = filteredTasks.filter(t => {
+            const statusWork = t.status_work ?? t.check ?? 0;
+            return statusWork === 0;
+        }).length;
+
         const total = filteredTasks.length;
 
         return { completed, pendingReview, needsChanges, inProgress, notStarted, total };
@@ -130,6 +157,7 @@ const OverallStatsCards: React.FC<OverallStatsCardsProps> = ({ tasks }) => {
             const completedOnDay = filteredTasks.filter(t => {
                 if (!t.approvalAt || t.accept !== 1) return false;
                 const approvalDate = new Date(t.approvalAt);
+                if (isNaN(approvalDate.getTime())) return false; // Safety Check
                 return isSameDay(approvalDate, dayStart);
             }).length;
 

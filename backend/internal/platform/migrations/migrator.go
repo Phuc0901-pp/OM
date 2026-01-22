@@ -30,11 +30,14 @@ func RunManualMigrations(db *gorm.DB) {
 		&domain.Project{},
 		&domain.ProjectClassification{},
 		&domain.MainCategory{},
+		&domain.Station{},        // Must be before ChildCategory due to FK
+        &domain.StationChildConfig{}, // NEW TABLE
 		&domain.ChildCategory{},
 		&domain.ProjectCharacteristic{},
 		&domain.Assign{},
 		&domain.TaskDetail{},
 		&domain.Attendance{},
+		&domain.Process{}, // NEW: Process Table
 	)
 	if err != nil {
 		log.Printf("AutoMigrate Failed: %v", err)
@@ -42,17 +45,128 @@ func RunManualMigrations(db *gorm.DB) {
 
 	// Post-Migration Manual Fixes
 	
-	// Task Details
+	// ==================== TASK_DETAILS NEW SCHEMA (2026-01-17) ====================
+	// Drop old columns
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS station_name")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS inverter_name")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS \"check\"")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS accept")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS status")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS note")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS notes")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS image_path")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS data_result")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS approved_at")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS rejected_at")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS station_child_config_id")
 	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS item_index")
-	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS station_name text")
-	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS inverter_name text")
-	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS \"check\" integer DEFAULT 0")
-	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS accept integer DEFAULT 0")
+	
+	// Add new columns
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS station_id UUID")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS process_id UUID")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS status_work INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS status_submit INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS status_approve INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS approval_at TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS reject_at TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS note_reject TEXT")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS note_approval TEXT")
+	
+	// NEW: Timeline and notes from allocation UI (2026-01-17)
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS project_start_time TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS project_end_time TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS data_note TEXT")
+	
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS status_reject INTEGER DEFAULT 0")
+	// db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP WITH TIME ZONE")
+	db.Exec("ALTER TABLE task_details DROP COLUMN IF EXISTS rejected_at") // Removed per user request 2026-01-22
+	
+	// NEW: Work note stored in MinIO (2026-01-20)
+	db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS work_note TEXT")
+	
+	// Index for station_id
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_task_details_station_id ON task_details(station_id)")
+
     
-    // New Timestamp Columns (Manual Fix)
-    db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE")
-    db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS approval_at TIMESTAMP WITH TIME ZONE")
-    db.Exec("ALTER TABLE task_details ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP WITH TIME ZONE")
+    // Manual fallback for station_child_configs if AutoMigrate fails
+    db.Exec(`
+        CREATE TABLE IF NOT EXISTS station_child_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            station_id UUID NOT NULL,
+            child_category_id UUID NOT NULL,
+            process_ids JSONB,
+            guide_text TEXT,
+            guide_images JSONB,
+            image_count INTEGER DEFAULT 0,
+            id_project_classification UUID,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_station_child_configs_station_id ON station_child_configs(station_id);
+    `)
+    
+    // Add id_project_classification if not exists
+    db.Exec("ALTER TABLE station_child_configs ADD COLUMN IF NOT EXISTS id_project_classification UUID")
+
+	
+	// Stations Table (Manual Fallback)
+	db.Exec(`CREATE TABLE IF NOT EXISTS stations (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		name TEXT NOT NULL,
+		id_project UUID,
+		id_main_category UUID,
+		id_process JSONB,
+		status TEXT DEFAULT 'pending',
+		accept INTEGER DEFAULT 0,
+		"check" INTEGER DEFAULT 0,
+		submitted_at TIMESTAMP WITH TIME ZONE,
+		approval_at TIMESTAMP WITH TIME ZONE,
+		rejected_at TIMESTAMP WITH TIME ZONE,
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+		deleted_at TIMESTAMP WITH TIME ZONE
+	)`)
+	
+	// Add StationID column to child_categories for hierarchy
+	db.Exec("ALTER TABLE child_categories ADD COLUMN IF NOT EXISTS id_station UUID")
+	
+	// Add child_category_ids column to stations for storing config
+	db.Exec("ALTER TABLE stations ADD COLUMN IF NOT EXISTS child_category_ids JSONB")
+	
+	// Add child_configs column for per-child-category configuration
+	// CLEANUP: Drop columns moved to station_child_configs table
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS child_configs")
+    db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS huong_dan")
+    db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS so_luong_anh")
+    db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS duong_dan_anh")
+	
+	// NEW: Drop deprecated columns from stations (2026-01-17)
+	// Status tracking is now in task_details table
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS id_process")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS status")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS accept")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS \"check\"")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS submitted_at")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS approval_at")
+	db.Exec("ALTER TABLE stations DROP COLUMN IF EXISTS rejected_at")
+
+    // Assign Relation for Stations (User Request)
+    db.Exec("ALTER TABLE stations ADD COLUMN IF NOT EXISTS assign_id UUID")
+    db.Exec("CREATE INDEX IF NOT EXISTS idx_stations_assign_id ON stations(assign_id)")
+    // Add FK manually to avoid errors if parent missing (though Assign should exist)
+    db.Exec(`
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_stations_assign'
+            ) THEN
+                ALTER TABLE stations ADD CONSTRAINT fk_stations_assign 
+                    FOREIGN KEY (assign_id) REFERENCES assign(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+    `)
+
 	
 	// Users
 	db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id text")

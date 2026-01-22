@@ -22,6 +22,31 @@ interface SidebarProps {
     onClose: () => void;
 }
 
+const adminMenu = [
+    { label: 'Quản lý', icon: ClipboardEdit, path: '/admin/management' },
+    { label: 'Báo Cáo', icon: FileBarChart, path: '/admin/reports' },
+    { label: 'Vận Hành', icon: Activity, path: '/admin/operations' },
+    { label: 'Database', icon: Database, path: '/admin/database' },
+];
+
+const managerMenu = [
+    { label: 'Quản lý', icon: ClipboardEdit, path: '/manager/management' },
+    { label: 'Báo Cáo', icon: FileBarChart, path: '/manager/reports' },
+    { label: 'Phân Bổ', icon: Share2, path: '/manager/allocation' },
+    { label: 'Vận hành', icon: Activity, path: '/manager/operations' },
+    { label: 'Lịch sử', icon: Briefcase, path: '/manager/history' },
+];
+
+const defaultMenu = [
+    { label: 'Tổng quan', icon: LayoutDashboard, path: '/' },
+];
+
+const userMenu = [
+    { label: 'Môi trường làm việc', icon: Briefcase, path: '/user/environment' },
+    { label: 'Thống kê dữ liệu', icon: BarChart3, path: '/user/statistics' },
+    { label: 'Cài đặt', icon: Settings, path: '/user/settings' },
+];
+
 const Sidebar = ({ role, isOpen, onClose }: SidebarProps) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -31,31 +56,6 @@ const Sidebar = ({ role, isOpen, onClose }: SidebarProps) => {
         localStorage.removeItem('user');
         navigate('/login');
     };
-
-    const adminMenu = [
-        { label: 'Quản lý', icon: ClipboardEdit, path: '/admin/management' },
-        { label: 'Báo Cáo', icon: FileBarChart, path: '/admin/reports' },
-        { label: 'Vận Hành', icon: Activity, path: '/admin/operations' },
-        { label: 'Database', icon: Database, path: '/admin/database' },
-    ];
-
-    const managerMenu = [
-        { label: 'Quản lý', icon: ClipboardEdit, path: '/manager/management' },
-        { label: 'Báo Cáo', icon: FileBarChart, path: '/manager/reports' },
-        { label: 'Phân Bổ', icon: Share2, path: '/manager/allocation' },
-        { label: 'Vận hành', icon: Activity, path: '/manager/operations' },
-        { label: 'Lịch sử', icon: Briefcase, path: '/manager/history' },
-    ];
-
-    const defaultMenu = [
-        { label: 'Tổng quan', icon: LayoutDashboard, path: '/' },
-    ];
-
-    const userMenu = [
-        { label: 'Môi trường làm việc', icon: Briefcase, path: '/user/environment' },
-        { label: 'Thống kê dữ liệu', icon: BarChart3, path: '/user/statistics' },
-        { label: 'Cài đặt', icon: Settings, path: '/user/settings' },
-    ];
 
     const getMenu = () => {
         switch (role) {
@@ -95,11 +95,11 @@ const Sidebar = ({ role, isOpen, onClose }: SidebarProps) => {
                     <div className="flex items-center gap-3">
                         {/* Logo */}
                         <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-white">
-                            <img src="../assets/LOGO.png" alt="Smart O&M Logo" className="w-full h-full object-contain" />
+                            <img src="../assets/logo.png" alt="Smart O&M Logo" className="w-full h-full object-contain" />
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-slate-900">Raitek O&M</h1>
-                            <p className="text-xs text-slate-500">System v2.0</p>
+                            <p className="text-xs text-slate-500">Version 2.0</p>
                         </div>
                     </div>
                 </div>
