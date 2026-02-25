@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # --- Frontend (React SPA Served via Nginx) ---
+  frontend:
+    image: raitek/om-frontend:latest
+    container_name: cmms_frontend_prod
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - raitek_server
+
+  # --- Backend (Golang REST API Server) ---
+  backend:
+    image: raitek/om-backend:latest
+    container_name: cmms_backend_prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    networks:
+      - raitek_server
+
+networks:
+  raitek_server:
+    external: true
+    name: raitek_server
