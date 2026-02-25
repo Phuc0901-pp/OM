@@ -25,6 +25,19 @@ services:
     networks:
       - raitek_server
 
+  # --- Ngrok (HTTPS Tunnel) ---
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: cmms_ngrok_prod
+    restart: unless-stopped
+    command:
+      - "http"
+      - "frontend:80"
+    env_file:
+      - ../configs/.env
+    networks:
+      - raitek_server
+
 networks:
   raitek_server:
     external: true
