@@ -25,6 +25,7 @@ interface SidebarProps {
 
 // Imports
 import { useLanguage } from '../context/LanguageContext';
+import logoSrc from '../assets/logo.png';
 
 const Sidebar = ({ role, isOpen, onClose }: SidebarProps) => {
     const navigate = useNavigate();
@@ -102,7 +103,7 @@ const Sidebar = ({ role, isOpen, onClose }: SidebarProps) => {
                     <div className="flex items-center gap-3">
                         {/* Logo */}
                         <div className="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-white">
-                            <img src="../assets/logo.png" alt="Smart O&M Logo" className="w-full h-full object-contain" />
+                            <img src={logoSrc} alt="Smart O&M Logo" className="w-full h-full object-contain" />
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-slate-900 dark:text-white">Raitek O&M</h1>
