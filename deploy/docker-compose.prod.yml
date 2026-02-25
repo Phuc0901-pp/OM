@@ -21,7 +21,7 @@ services:
     container_name: cmms_backend_prod
     restart: unless-stopped
     env_file:
-      - ../backend/.env
+      - .env
     ports:
       - "4000:4000"
     depends_on:
@@ -36,7 +36,7 @@ services:
     container_name: cmms_db_prod
     restart: unless-stopped
     env_file:
-      - ../backend/.env
+      - .env
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
