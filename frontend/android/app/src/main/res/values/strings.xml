@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OM Project</string>
+    <string name="title_activity_main">OM Project</string>
+    <string name="package_name">vn.ute.om</string>
+    <string name="custom_url_scheme">vn.ute.om</string>
+</resources>
