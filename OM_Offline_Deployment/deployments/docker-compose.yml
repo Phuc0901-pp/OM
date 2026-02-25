@@ -19,7 +19,7 @@ services:
     container_name: cmms_backend_prod
     restart: unless-stopped
     env_file:
-      - .env
+      - ../configs/.env
     ports:
       - "4000:4000"
     networks:
