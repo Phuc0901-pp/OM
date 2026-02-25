@@ -30,7 +30,7 @@ fi
 echo -e "\033[1;33m\n[3/3] Đang khởi động toàn bộ hệ thống...\033[0m"
 if [ -f "deployments/docker-compose.yml" ]; then
     # Để docker-compose nhận diện đúng file env trong thư mục configs
-    docker-compose -f deployments/docker-compose.yml --env-file configs/.env up -d
+    docker compose -f deployments/docker-compose.yml --env-file configs/.env up -d
 else
     echo -e "\033[1;31mLỖI: Không tìm thấy deployments/docker-compose.yml\033[0m"
     exit 1
