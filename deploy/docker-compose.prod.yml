@@ -12,6 +12,8 @@ services:
       - "8080:80"
     depends_on:
       - backend
+    networks:
+      - raitek_server
 
   # --- Backend (Golang REST API Server) ---
   backend:
@@ -24,28 +26,10 @@ services:
       - .env
     ports:
       - "4000:4000"
-    depends_on:
-      - db
-    # We NO LONGER depend on a MinIO container. 
-    # Backend will interact with the native MinIO service of the host machine
-    # via the $MINIO_ENDPOINT environment variable configured in .env
+    networks:
+      - raitek_server
 
-  # --- Database (PostgreSQL Cluster Initialize) ---
-  db:
-    image: postgres:15-alpine
-    container_name: cmms_db_prod
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-solar_om}
-    volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-volumes:
-  postgres_data_prod:
-    name: om_postgres_db_data
+networks:
+  raitek_server:
+    external: true
+    name: raitek_server
