@@ -37,22 +37,23 @@ $TarPath = Join-Path $OutputDir "om_images.tar"
 docker save -o $TarPath raitek/om-backend:latest raitek/om-frontend:latest
 
 # 5. Sắp xếp file cấu hình theo chuẩn
-Write-Host "`n[3/3] Bố trí file Cấu hình & Docker Compose..." -ForegroundColor Yellow
-# Lấy docker-compose.offline (đã rút gọn) đổi tên thành docker-compose.yml chuẩn
+Write-Host "`n[3/3] Bố trí file Cấu hình, Script & Docker Compose..." -ForegroundColor Yellow
 Copy-Item "deploy\docker-compose.offline.yml" -Destination (Join-Path $OutputDir "deployments\docker-compose.yml")
-# Bỏ file env mẫu vào configs/ để dễ quản lý
 Copy-Item "deploy\.env.example" -Destination (Join-Path $OutputDir "configs\.env.example")
+Copy-Item "scripts\auto_start.sh" -Destination $OutputDir
+
+# 6. Nén thành file ZIP cho dễ Upload
+Write-Host "`n[+] Đang nén toàn bộ thành file OM_Offline_Package.zip ..." -ForegroundColor Yellow
+$ZipPath = Join-Path $ProjectRoot "OM_Offline_Package.zip"
+if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+Compress-Archive -Path "$OutputDir\*" -DestinationPath $ZipPath
 
 Write-Host "`n=============================================" -ForegroundColor Green
 Write-Host " HOÀN TẤT ĐÓNG GÓI! `n" -ForegroundColor Green
-Write-Host "Thư mục xuất xưởng: $OutputDir" -ForegroundColor White
+Write-Host "Sản phẩm đầu ra: $ZipPath" -ForegroundColor White
 Write-Host "`n[HƯỚNG DẪN COPY LÊN SERVER LINUX]" -ForegroundColor Cyan
-Write-Host "Anh chỉ cần copy 3 thành phần trong thư mục này thả lên Server:" -ForegroundColor White
-Write-Host "  1. om_images.tar" -ForegroundColor White
-Write-Host "  2. deployments/docker-compose.yml" -ForegroundColor White
-Write-Host "  3. configs/.env.example" -ForegroundColor White
-Write-Host "`n[TẠI SERVER LINUX]" -ForegroundColor Cyan
-Write-Host "  docker load -i om_images.tar" -ForegroundColor White
-Write-Host "  cp configs/.env.example .env" -ForegroundColor White
-Write-Host "  docker-compose -f deployments/docker-compose.yml up -d" -ForegroundColor White
+Write-Host "1. Anh chỉ cần Upload duy nhất file OM_Offline_Package.zip lên Server Linux." -ForegroundColor White
+Write-Host "2. Giải nén trên Server: unzip OM_Offline_Package.zip -d om_app" -ForegroundColor White
+Write-Host "3. Chui vào thư mục: cd om_app" -ForegroundColor White
+Write-Host "4. CHẠY MỘT LỆNH DUY NHẤT: bash auto_start.sh" -ForegroundColor White
 Write-Host "=============================================" -ForegroundColor Green
