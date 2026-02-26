@@ -4,7 +4,7 @@
  * using react-window List for maximum performance with large datasets.
  */
 import React, { useMemo, useCallback, useRef } from 'react';
-import { List } from 'react-window';
+import { VariableSizeList as List } from 'react-window';
 import { Check, ChevronDown, HelpCircle } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
