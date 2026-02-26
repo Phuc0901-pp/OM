@@ -4,7 +4,7 @@
  * using react-window List for maximum performance with large datasets.
  */
 import React, { useMemo, useCallback, useRef } from 'react';
-import { VariableSizeList as List } from 'react-window';
+import { List } from 'react-window';
 import { Check, ChevronDown, HelpCircle } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -333,18 +333,15 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
         );
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ListAny = List as any;
     return (
-        <ListAny
-            ref={listRef}
-            height={listHeight}
-            itemCount={flatNodes.length}
-            itemSize={getItemSize}
-            width="100%"
-        >
-            {RowRenderer}
-        </ListAny>
+        <List
+            listRef={listRef}
+            style={{ height: listHeight, width: '100%' }}
+            rowCount={flatNodes.length}
+            rowHeight={(index) => getItemSize(index)}
+            rowComponent={(props) => <RowRenderer index={props.index} style={props.style} />}
+            rowProps={{}}
+        />
     );
 };
 
