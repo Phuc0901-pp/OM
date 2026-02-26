@@ -104,6 +104,9 @@ const ManagerAllocationPage = () => {
     const [childCategoriesMap, setChildCategoriesMap] = useState<Record<string, any[]>>({});
     const [childAreaNames, setChildAreaNames] = useState<Record<string, string>>({}); // New State to store "Mái", "Nhà máy" etc.
 
+    // Tracks which main categories are configured (qty > 0) for the selected project
+    const [configuredMainCatIds, setConfiguredMainCatIds] = useState<Set<string>>(new Set());
+
     // Station State
     const [stationsMap, setStationsMap] = useState<Record<string, Station[]>>({});
 
@@ -187,6 +190,7 @@ const ManagerAllocationPage = () => {
 
 
         setIsProjectListExpanded(false);
+        setConfiguredMainCatIds(new Set()); // Reset on project change
 
         if (mainCategories.length === 0 || Object.keys(childCategoriesMap).length === 0) return;
 
@@ -199,6 +203,7 @@ const ManagerAllocationPage = () => {
                 const newSelectedMain: Record<string, boolean> = {};
                 const newSelectedChild: Record<string, boolean> = {};
                 const newAreaNames: Record<string, string> = {}; // Extract Area Names
+                const newConfiguredMain = new Set<string>(); // Track configured main cats
 
                 // Parse child category data if available
                 const childData = data.child_category_data || {};
@@ -239,6 +244,7 @@ const ManagerAllocationPage = () => {
                     if ((typeof mainVal === 'number' && mainVal > 0) || hasActiveChild) {
                         newExpanded[mainCat.id] = true;
                         newSelectedMain[mainCat.id] = true;
+                        newConfiguredMain.add(mainCat.id); // Track it is configured
                     }
                 });
 
@@ -248,6 +254,7 @@ const ManagerAllocationPage = () => {
                 setSelectedMainCats(prev => ({ ...prev, ...newSelectedMain }));
                 setSelectedChildCats(prev => ({ ...prev, ...newSelectedChild }));
                 setQuantities(data);
+                setConfiguredMainCatIds(newConfiguredMain);
             } catch (error) {
                 setCharValues({});
                 setQuantities({});
@@ -566,7 +573,7 @@ const ManagerAllocationPage = () => {
                                 {/* Category List - Virtual Scroll */}
                                 <div className="flex-1">
                                     <VirtualCategoryList
-                                        mainCategories={mainCategories}
+                                        mainCategories={configuredMainCatIds.size > 0 ? mainCategories.filter(cat => configuredMainCatIds.has(cat.id)) : mainCategories}
                                         childCategoriesMap={childCategoriesMap}
                                         stationsMap={stationsMap}
                                         expandedCategories={expandedCategories}
