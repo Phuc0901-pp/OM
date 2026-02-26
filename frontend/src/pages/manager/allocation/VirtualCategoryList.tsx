@@ -2,8 +2,11 @@
  * VirtualCategoryList.tsx
  * Renders the 3-tier allocation category tree (Main -> Station -> Child)
  * using react-window List for maximum performance with large datasets.
+ *
+ * PERF FIX: RowRenderer is defined as a stable memo component outside the parent
+ * so react-window can reuse DOM nodes instead of remounting on each state change.
  */
-import React, { useMemo, useCallback, useRef } from 'react';
+import React, { useMemo, useRef, memo } from 'react';
 import { List } from 'react-window';
 import { Check, ChevronDown, HelpCircle } from 'lucide-react';
 
@@ -83,6 +86,130 @@ interface VirtualCategoryListProps {
     listHeight?: number;
 }
 
+// ── Item Data passed to react-window ─────────────────────────────────────────
+
+interface RowItemData {
+    flatNodes: FlatNode[];
+    selectedChildCats: Record<string, boolean>;
+    toggleMainCat: (catId: string, checked: boolean) => void;
+    toggleChildCat: (childId: string, mainId: string, checked: boolean) => void;
+    handleCategoryExpand: (catId: string, expanded: boolean) => void;
+    setSelectedChildCats: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+    setGuidePopup: (p: { title: string; text: string; images: string[] } | null) => void;
+}
+
+// ── Stable Row Renderer (memo, outside component scope) ───────────────────────
+// This prevents react-window from unmounting + remounting every row on each re-render.
+
+const RowRenderer = memo(({ index, style, data }: { index: number; style: React.CSSProperties; data: RowItemData }) => {
+    const {
+        flatNodes,
+        selectedChildCats,
+        toggleMainCat,
+        toggleChildCat,
+        handleCategoryExpand,
+        setSelectedChildCats,
+        setGuidePopup,
+    } = data;
+
+    const node = flatNodes[index];
+    if (!node) return null;
+
+    // ── Main Category ──────────────────────────────────────────────────
+    if (node.type === 'main') {
+        const { id, label, isMainSelected, isMainExpanded } = node;
+        return (
+            <div style={style} className={`border-b flex items-center transition-colors ${isMainSelected ? 'bg-emerald-50/60' : 'bg-white hover:bg-slate-50'}`}>
+                <div className="flex items-center px-3 gap-2 w-full h-full">
+                    <div
+                        onClick={e => { e.stopPropagation(); toggleMainCat(id, !isMainSelected); }}
+                        className={`w-5 h-5 shrink-0 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${isMainSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}
+                    >
+                        {isMainSelected && <Check className="w-3 h-3" />}
+                    </div>
+                    <div className="flex-1 cursor-pointer" onClick={() => handleCategoryExpand(id, !isMainExpanded)}>
+                        <h4 className={`font-bold text-sm ${isMainSelected ? 'text-emerald-900' : 'text-slate-700'}`}>{label}</h4>
+                    </div>
+                    <ChevronDown
+                        className={`w-4 h-4 text-slate-400 transition-transform cursor-pointer ${isMainExpanded ? 'rotate-180' : ''}`}
+                        onClick={() => handleCategoryExpand(id, !isMainExpanded)}
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    // ── Station ────────────────────────────────────────────────────────
+    if (node.type === 'station') {
+        const { label, isAnySelected, visibleChildrenIds = [] } = node;
+        const isAllSel = visibleChildrenIds.every(id => selectedChildCats[id]);
+        return (
+            <div style={style} className="border-b bg-slate-100/80 flex items-center">
+                <div className="flex items-center px-4 gap-2 w-full">
+                    <div
+                        onClick={() => {
+                            const next = !isAllSel;
+                            setSelectedChildCats(prev => {
+                                const updated = { ...prev };
+                                visibleChildrenIds.forEach(id => { updated[id] = next; });
+                                return updated;
+                            });
+                        }}
+                        className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer ${isAnySelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}
+                    >
+                        {isAnySelected && <Check className="w-2.5 h-2.5" />}
+                    </div>
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{label}</span>
+                </div>
+            </div>
+        );
+    }
+
+    // ── Child ──────────────────────────────────────────────────────────
+    if (node.type === 'child') {
+        const { childCategoryId, mainId, label, isChildSelected, hasGuide, processNames = [], imageCount, config } = node;
+        if (!childCategoryId) return null;
+        return (
+            <div style={style} className={`border-b flex items-center transition-colors ${isChildSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                <div className="flex items-center justify-between px-5 gap-2 w-full">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div
+                            onClick={() => toggleChildCat(childCategoryId, mainId, !isChildSelected)}
+                            className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors ${isChildSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}
+                        >
+                            {isChildSelected && <Check className="w-3 h-3" />}
+                        </div>
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-sm font-medium truncate ${isChildSelected ? 'text-emerald-900' : 'text-slate-600'}`}>{label}</span>
+                                {hasGuide && (
+                                    <div
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            setGuidePopup({ title: label, text: config?.guide_text || '', images: config?.guide_images || [] });
+                                        }}
+                                        className="text-indigo-400 hover:text-indigo-600 cursor-pointer shrink-0"
+                                    >
+                                        <HelpCircle className="w-3.5 h-3.5" />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px]">
+                                {processNames.length > 0 && <span className="text-indigo-600">📋 {processNames.join(', ')}</span>}
+                                {(imageCount ?? 0) > 0 && <span className="text-amber-600">📷 {imageCount} ảnh</span>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+});
+
+RowRenderer.displayName = 'RowRenderer';
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
@@ -92,7 +219,7 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
     expandedCategories,
     selectedMainCats,
     selectedChildCats,
-    childAreaNames,
+    childAreaNames: _childAreaNames,
     processMap,
     selectedClassification,
     toggleMainCat,
@@ -115,19 +242,28 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
             const isMainExpanded = expandedCategories[mainCat.id] || false;
             const isMainSelected = selectedMainCats[mainCat.id] || false;
 
-            // Compute visibility
-            const visibleStationsCount = stations.reduce((count, station) => {
-                const ids = station.child_category_ids || [];
-                const hasVisible = ids.some(childId => {
-                    const cfg = (station.child_configs || []).find(c => c.child_category_id === childId);
-                    if (!cfg) return false;
-                    if (selectedClassification && cfg.project_classification_id !== selectedClassification) return false;
-                    return true;
-                });
-                return hasVisible ? count + 1 : count;
-            }, 0);
+            const hasStations = stations.length > 0;
 
-            if (visibleStationsCount === 0 && flatChildren.length === 0) return;
+            // Determine if this category has any visible content after classification filter
+            let hasVisibleItems = false;
+            if (hasStations) {
+                // Check if any station has at least one child visible under the current filter
+                hasVisibleItems = stations.some(station => {
+                    const ids = station.child_category_ids || [];
+                    return ids.some(childId => {
+                        const cfg = (station.child_configs || []).find(c => c.child_category_id === childId);
+                        if (!cfg) return false;
+                        if (selectedClassification && cfg.project_classification_id !== selectedClassification) return false;
+                        return true;
+                    });
+                });
+            } else {
+                // No stations: show if there are child categories
+                hasVisibleItems = flatChildren.length > 0;
+            }
+
+            // Skip main category entirely if it has nothing to show
+            if (!hasVisibleItems) return;
 
             // Main category row
             nodes.push({
@@ -140,8 +276,6 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
             });
 
             if (!isMainExpanded) return;
-
-            const hasStations = stations.length > 0;
 
             if (hasStations) {
                 stations.forEach(station => {
@@ -215,115 +349,28 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
         });
 
         return nodes;
-    }, [mainCategories, childCategoriesMap, stationsMap, expandedCategories, selectedMainCats, selectedChildCats, childAreaNames, processMap, selectedClassification]);
+    }, [mainCategories, childCategoriesMap, stationsMap, expandedCategories, selectedMainCats, selectedChildCats, processMap, selectedClassification]);
 
     // Invalidate react-window row size cache whenever list changes
     React.useEffect(() => {
         listRef.current?.resetAfterIndex?.(0);
     }, [flatNodes.length]);
 
-    const getItemSize = useCallback((index: number) => {
+    const getItemSize = (index: number) => {
         const node = flatNodes[index];
         return node ? ROW_HEIGHT[node.type] : 52;
-    }, [flatNodes]);
+    };
 
-    // ── Row Renderer ──────────────────────────────────────────────────────────
-    const RowRenderer = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
-        const node = flatNodes[index];
-        if (!node) return null;
-
-        // ── Main Category ──────────────────────────────────────────────────
-        if (node.type === 'main') {
-            const { id, label, isMainSelected, isMainExpanded } = node;
-            return (
-                <div style={style} className={`border-b flex items-center transition-colors ${isMainSelected ? 'bg-emerald-50/60' : 'bg-white hover:bg-slate-50'}`}>
-                    <div className="flex items-center px-3 gap-2 w-full h-full">
-                        <div
-                            onClick={e => { e.stopPropagation(); toggleMainCat(id, !isMainSelected); }}
-                            className={`w-5 h-5 shrink-0 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${isMainSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}
-                        >
-                            {isMainSelected && <Check className="w-3 h-3" />}
-                        </div>
-                        <div className="flex-1 cursor-pointer" onClick={() => handleCategoryExpand(id, !isMainExpanded)}>
-                            <h4 className={`font-bold text-sm ${isMainSelected ? 'text-emerald-900' : 'text-slate-700'}`}>{label}</h4>
-                        </div>
-                        <ChevronDown
-                            className={`w-4 h-4 text-slate-400 transition-transform cursor-pointer ${isMainExpanded ? 'rotate-180' : ''}`}
-                            onClick={() => handleCategoryExpand(id, !isMainExpanded)}
-                        />
-                    </div>
-                </div>
-            );
-        }
-
-        // ── Station ────────────────────────────────────────────────────────
-        if (node.type === 'station') {
-            const { label, isAnySelected, visibleChildrenIds = [] } = node;
-            const isAllSel = visibleChildrenIds.every(id => selectedChildCats[id]);
-            return (
-                <div style={style} className="border-b bg-slate-100/80 flex items-center">
-                    <div className="flex items-center px-4 gap-2 w-full">
-                        <div
-                            onClick={() => {
-                                const next = !isAllSel;
-                                setSelectedChildCats(prev => {
-                                    const updated = { ...prev };
-                                    visibleChildrenIds.forEach(id => { updated[id] = next; });
-                                    return updated;
-                                });
-                            }}
-                            className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer ${isAnySelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}
-                        >
-                            {isAnySelected && <Check className="w-2.5 h-2.5" />}
-                        </div>
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{label}</span>
-                    </div>
-                </div>
-            );
-        }
-
-        // ── Child ──────────────────────────────────────────────────────────
-        if (node.type === 'child') {
-            const { childCategoryId, mainId, label, isChildSelected, hasGuide, processNames = [], imageCount, config } = node;
-            if (!childCategoryId) return null;
-            return (
-                <div style={style} className={`border-b flex items-center transition-colors ${isChildSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
-                    <div className="flex items-center justify-between px-5 gap-2 w-full">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div
-                                onClick={() => toggleChildCat(childCategoryId, mainId, !isChildSelected)}
-                                className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors ${isChildSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-emerald-400'}`}
-                            >
-                                {isChildSelected && <Check className="w-3 h-3" />}
-                            </div>
-                            <div className="min-w-0 flex flex-col gap-0.5">
-                                <div className="flex items-center gap-1.5">
-                                    <span className={`text-sm font-medium truncate ${isChildSelected ? 'text-emerald-900' : 'text-slate-600'}`}>{label}</span>
-                                    {hasGuide && (
-                                        <div
-                                            onClick={e => {
-                                                e.stopPropagation();
-                                                setGuidePopup({ title: label, text: config?.guide_text || '', images: config?.guide_images || [] });
-                                            }}
-                                            className="text-indigo-400 hover:text-indigo-600 cursor-pointer shrink-0"
-                                        >
-                                            <HelpCircle className="w-3.5 h-3.5" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2 text-[11px]">
-                                    {processNames.length > 0 && <span className="text-indigo-600">📋 {processNames.join(', ')}</span>}
-                                    {(imageCount ?? 0) > 0 && <span className="text-amber-600">📷 {imageCount} ảnh</span>}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        return null;
-    }, [flatNodes, toggleMainCat, toggleChildCat, handleCategoryExpand, setSelectedChildCats, setGuidePopup, selectedChildCats]);
+    // Stable item data: pass all callbacks + state to row renderer via itemData
+    const itemData = useMemo<RowItemData>(() => ({
+        flatNodes,
+        selectedChildCats,
+        toggleMainCat,
+        toggleChildCat,
+        handleCategoryExpand,
+        setSelectedChildCats,
+        setGuidePopup,
+    }), [flatNodes, selectedChildCats, toggleMainCat, toggleChildCat, handleCategoryExpand, setSelectedChildCats, setGuidePopup]);
 
     if (flatNodes.length === 0) {
         return (
@@ -339,8 +386,8 @@ const VirtualCategoryList: React.FC<VirtualCategoryListProps> = ({
             style={{ height: listHeight, width: '100%' }}
             rowCount={flatNodes.length}
             rowHeight={(index) => getItemSize(index)}
-            rowComponent={(props) => <RowRenderer index={props.index} style={props.style} />}
-            rowProps={{}}
+            rowComponent={RowRenderer}
+            rowProps={itemData}
         />
     );
 };
