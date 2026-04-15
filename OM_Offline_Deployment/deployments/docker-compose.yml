@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # --- Frontend (React SPA Served via Nginx) ---
+  frontend:
+    image: raitek/om-frontend:latest
+    container_name: cmms_frontend_prod
+    restart: unless-stopped
+    ports:
+      - "2506:80"
+    depends_on:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
+  # --- Backend (Golang REST API Server) ---
+  backend:
+    image: raitek/om-backend:latest
+    container_name: cmms_backend_prod
+    restart: unless-stopped
+    env_file:
+      - ../configs/.env
+    depends_on:
+      - db
+      - minio
+      - rabbitmq
+    ports:
+      - "4000:4000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
+  # --- Database (PostgreSQL) ---
+  db:
+    image: postgres:15-alpine
+    container_name: cmms_postgres_prod
+    restart: unless-stopped
+    env_file:
+      - ../configs/.env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      PGPORT: 2602
+    ports:
+      - "2602:2602"
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
+  # --- Object Storage (MinIO) ---
+  minio:
+    image: minio/minio:latest
+    container_name: cmms_minio_prod
+    restart: unless-stopped
+    env_file:
+      - ../configs/.env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --address ":2603" --console-address ":2604"
+    ports:
+      - "2603:2603"
+      - "2604:2604"
+    volumes:
+      - miniodata_prod:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
+  # --- Message Broker (RabbitMQ) ---
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: cmms_rabbitmq_prod
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: phucraitek0539
+      RABBITMQ_DEFAULT_PASS: 090103Phuc
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmqdata_prod:/var/lib/rabbitmq
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
+networks:
+  raitek_server:
+    external: true
+    name: raitek_server
+
+volumes:
+  pgdata_prod:
+  miniodata_prod:
+  rabbitmqdata_prod:

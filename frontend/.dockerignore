@@ -1,0 +1,14 @@
+node_modules
+.env
+.DS_Store
+*.log
+.git
+.gitignore
+src
+public
+*.ts
+*.tsx
+*.json
+vite.config.*
+tsconfig*
+index.html

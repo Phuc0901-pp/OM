@@ -1,0 +1,9 @@
+version: "2"
+authtoken: 39UIIFQJBZSpeplFpaDaa1GHrBY_7UjSxjpXrdTuVrJeXW7TE
+tunnels:
+  backend:
+    addr: 4000
+    proto: http
+  frontend:
+    addr: 8080
+    proto: http

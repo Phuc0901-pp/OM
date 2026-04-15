@@ -1,0 +1,965 @@
+import React, { useState, useMemo, useCallback } from "react";
+import ReactDOM from "react-dom";
+import {
+  Search,
+  ChevronRight,
+  LayoutGrid,
+  CheckSquare,
+  Square,
+  Check,
+  X,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Filter,
+  Calendar,
+  Folder,
+  User as UserIcon,
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  CheckCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  FileText,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+import { parseSafeDate } from "../../../../utils/timeUtils";
+import GlassCard from "../../../../components/common/GlassCard";
+import PremiumButton from "../../../../components/common/PremiumButton";
+import ModernInput from "../../../../components/common/ModernInput";
+import { TaskRow } from "../types";
+import BulkTaskReportModal from "./BulkTaskReportModal";
+
+interface TaskTableProps {
+  tasks: TaskRow[];
+  selectedAssignId: string | null;
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
+  setSelectedTask: (task: TaskRow) => void;
+  stations: any[];
+  onBulkUpdateStatus: (
+    ids: string[],
+    status: number,
+    note?: string,
+  ) => Promise<void>;
+  fetchTasks: () => void;
+}
+
+const getStatusBadge = (statusString?: string) => {
+  switch (statusString || "0000") {
+    case "0000":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+          Ch╞░a thß╗▒c hiß╗çn
+        </span>
+      );
+    case "1000":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200">
+          ─Éang l├ám
+        </span>
+      );
+    case "1100":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200">
+          Chß╗¥ duyß╗çt
+        </span>
+      );
+    case "1001":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-600 border border-cyan-200">
+          ─É├ú nß╗Öp lß║íi
+        </span>
+      );
+    case "1101":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+          Tß╗½ chß╗æi / Chß╗¥ nß╗Öp lß║íi
+        </span>
+      );
+    case "1110":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+          ─É├ú xong
+        </span>
+      );
+    case "1111":
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-200">
+          ─É├ú ─æiß╗üu chß╗ënh xong
+        </span>
+      );
+    default:
+      return (
+        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border border-gray-200">
+          Kh├íc ({statusString})
+        </span>
+      );
+  }
+};
+
+const TaskTable: React.FC<TaskTableProps> = ({
+  tasks,
+  selectedAssignId,
+  searchTerm,
+  setSearchTerm,
+  setSelectedTask,
+  stations,
+  onBulkUpdateStatus,
+  fetchTasks,
+}) => {
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [reportCheckedIds, setReportCheckedIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [rejectCheckedIds, setRejectCheckedIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showRejectReportModal, setShowRejectReportModal] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof TaskRow;
+    direction: "asc" | "desc";
+  }>({ key: "updatedAt", direction: "desc" });
+
+  // === Filter State ===
+  const [filterType, setFilterType] = useState<string>(""); // '', 'subWorkName', 'assetName', 'statusString', 'time'
+  const [filterValue, setFilterValue] = useState<string>("");
+
+  // Reset filter value whenever filter type changes
+  React.useEffect(() => {
+    setFilterValue("");
+  }, [filterType]);
+
+  // Approvable tasks: Pending Review (1100) or Resubmitted (1001)
+  const approvableTasks = useMemo(
+    () =>
+      tasks.filter(
+        (t) => t.statusString === "1100" || t.statusString === "1001",
+      ),
+    [tasks],
+  );
+  // Approved tasks: Done (1110) or Adjusted (1111)
+  const approvedTasks = useMemo(
+    () =>
+      tasks.filter(
+        (t) => t.statusString === "1110" || t.statusString === "1111",
+      ),
+    [tasks],
+  );
+  // Rejected tasks: Tß╗½ chß╗æi / Chß╗¥ nß╗Öp lß║íi (1101)
+  const rejectedTasks = useMemo(
+    () => tasks.filter((t) => t.statusString === "1101"),
+    [tasks],
+  );
+  // True when every approved task is selected ΓÇö used to produce a short ?items=all URL
+  const isAllApprovedSelected =
+    approvedTasks.length > 0 &&
+    approvedTasks.every((t) => reportCheckedIds.has(t.id));
+  const isAllRejectSelected =
+    rejectedTasks.length > 0 &&
+    rejectedTasks.every((t) => rejectCheckedIds.has(t.id));
+
+  const hasApprovable = approvableTasks.length > 0;
+  const hasApproved = approvedTasks.length > 0;
+
+  const isAllChecked = hasApprovable
+    ? approvableTasks.every((t) => checkedIds.has(t.id))
+    : hasApproved && approvedTasks.every((t) => reportCheckedIds.has(t.id));
+
+  const isIndeterminate = hasApprovable
+    ? !isAllChecked && approvableTasks.some((t) => checkedIds.has(t.id))
+    : !isAllChecked && approvedTasks.some((t) => reportCheckedIds.has(t.id));
+
+  const masterCheckboxColor = hasApprovable
+    ? "#6366f1"
+    : hasApproved
+      ? "#10b981"
+      : "white";
+
+  const toggleReportOne = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setReportCheckedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleRejectOne = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRejectCheckedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Get dynamic filter options based on filterType and current tasks
+  const filterOptions = useMemo(() => {
+    if (!filterType) return [];
+    const options = new Set<string>();
+    tasks.forEach((t) => {
+      if (filterType === "subWorkName" && t.subWorkName)
+        options.add(t.subWorkName);
+      if (filterType === "assetName") {
+        let name = t.assetName || "-";
+        const assetObj = stations.find((s) => s.id === t.assetId);
+        if (assetObj && assetObj.parent_id) {
+          const parentObj = stations.find((s) => s.id === assetObj.parent_id);
+          if (parentObj) name = `${parentObj.name} - ${t.assetName}`;
+        }
+        options.add(name);
+      }
+      if (filterType === "statusString") {
+        options.add(t.statusString || "0000");
+      }
+      if (filterType === "time") {
+        if (t.submittedAt && !isNaN(parseSafeDate(t.submittedAt).getTime())) {
+          options.add(format(parseSafeDate(t.submittedAt), "dd/MM/yyyy"));
+        }
+      }
+    });
+    return Array.from(options).sort();
+  }, [tasks, filterType, stations]);
+
+  const sortedTasks = useMemo(() => {
+    let sortableTasks = [...tasks];
+
+    // Apply Cascade Filter
+    if (filterType && filterValue) {
+      sortableTasks = sortableTasks.filter((t) => {
+        if (filterType === "subWorkName") return t.subWorkName === filterValue;
+        if (filterType === "assetName") {
+          let name = t.assetName || "-";
+          const assetObj = stations.find((s) => s.id === t.assetId);
+          if (assetObj && assetObj.parent_id) {
+            const parentObj = stations.find((s) => s.id === assetObj.parent_id);
+            if (parentObj) name = `${parentObj.name} - ${t.assetName}`;
+          }
+          return name === filterValue;
+        }
+        if (filterType === "statusString")
+          return (t.statusString || "0000") === filterValue;
+        if (filterType === "time") {
+          if (!t.submittedAt || isNaN(parseSafeDate(t.submittedAt).getTime()))
+            return false;
+          return (
+            format(parseSafeDate(t.submittedAt), "dd/MM/yyyy") === filterValue
+          );
+        }
+        return true;
+      });
+    }
+
+    sortableTasks.sort((a, b) => {
+      if (!sortConfig) return 0;
+
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+
+      if (aValue === bValue) return 0;
+
+      if (aValue == null) return 1;
+      if (bValue == null) return -1;
+
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
+      }
+
+      if (sortConfig.key.includes("At") || sortConfig.key.includes("Time")) {
+        const dateA = new Date(aValue as string).getTime();
+        const dateB = new Date(bValue as string).getTime();
+        if (!isNaN(dateA) && !isNaN(dateB)) {
+          return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
+        }
+      }
+
+      const strA = String(aValue);
+      const strB = String(bValue);
+      return sortConfig.direction === "asc"
+        ? strA.localeCompare(strB)
+        : strB.localeCompare(strA);
+    });
+
+    return sortableTasks;
+  }, [tasks, sortConfig, filterType, filterValue, stations]);
+
+  const handleSort = (key: keyof TaskRow) => {
+    setSortConfig((prevSort) => {
+      if (prevSort && prevSort.key === key) {
+        return {
+          key,
+          direction: prevSort.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return { key, direction: "asc" };
+    });
+  };
+
+  const renderSortIcon = (key: keyof TaskRow) => {
+    if (!sortConfig || sortConfig.key !== key)
+      return (
+        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+      );
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="w-3 h-3 text-indigo-500" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-indigo-500" />
+    );
+  };
+
+  const toggleMaster = useCallback(() => {
+    if (hasApprovable) {
+      if (isAllChecked) setCheckedIds(new Set());
+      else setCheckedIds(new Set(approvableTasks.map((t) => t.id)));
+    } else if (hasApproved) {
+      if (isAllChecked) setReportCheckedIds(new Set());
+      else setReportCheckedIds(new Set(approvedTasks.map((t) => t.id)));
+    }
+  }, [
+    hasApprovable,
+    hasApproved,
+    isAllChecked,
+    approvableTasks,
+    approvedTasks,
+  ]);
+
+  const toggleOne = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const expandedPendingIds = useMemo(() => {
+    const allIds: string[] = [];
+    tasks.forEach((t) => {
+      if (checkedIds.has(t.id)) {
+        if (t.subTasks && t.subTasks.length > 0) {
+          t.subTasks.forEach((st) => {
+            if (st.statusString === "1100" || st.statusString === "1001")
+              allIds.push(st.id);
+          });
+        } else {
+          if (t.statusString === "1100" || t.statusString === "1001")
+            allIds.push(t.id);
+        }
+      }
+    });
+    return allIds;
+  }, [tasks, checkedIds]);
+
+  const handleBulkApprove = async () => {
+    const ids = expandedPendingIds;
+    if (ids.length === 0) return;
+    setBulkLoading(true);
+    try {
+      await onBulkUpdateStatus(ids, 1, "─É├ú ph├¬ duyß╗çt");
+      setCheckedIds(new Set());
+      fetchTasks();
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const ids = expandedPendingIds;
+    if (ids.length === 0) return;
+    const reason = prompt(
+      `Nhß║¡p l├╜ do tß╗½ chß╗æi cho ${ids.length} quy tr├¼nh (thuß╗Öc ${checkedIds.size} hß║íng mß╗Ñc):`,
+    );
+    if (reason === null) return;
+    setBulkLoading(true);
+    try {
+      await onBulkUpdateStatus(ids, -1, reason || "Tß╗½ chß╗æi h├áng loß║ít");
+      setCheckedIds(new Set());
+      fetchTasks();
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  return (
+    <GlassCard className="lg:col-span-9 !p-0 flex flex-col h-full overflow-hidden min-h-[600px] relative border-slate-200/60 shadow-xl shadow-slate-200/40">
+      <AnimatePresence mode="wait">
+        {selectedAssignId ? (
+          <motion.div
+            key="project-details"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col h-full"
+          >
+            {/* Toolbar */}
+            <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/50 backdrop-blur-md sticky top-0 z-20">
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-1.5 bg-gradient-to-b from-primary-500 to-indigo-600 rounded-full"></div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">
+                    {tasks.length > 0
+                      ? tasks[0].projectName
+                      : "Chi tiß║┐t ph├ón bß╗ò"}
+                  </h2>
+                  <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 rounded-lg mt-0.5">
+                    <div className="flex -space-x-1">
+                      {[...Array(3)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 h-1.5 rounded-full bg-primary-400 ring-1 ring-white"
+                        ></div>
+                      ))}
+                    </div>
+                    {tasks.length} hß║íng mß╗Ñc trong danh s├ích
+                  </span>
+                </div>
+              </div>
+
+              {/* Toolbar actions (Search + Filter) */}
+              <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
+                {/* Filter Component */}
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 shadow-sm text-sm w-full sm:w-auto">
+                  <div className="flex items-center text-slate-500 pl-2">
+                    <Filter className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 text-slate-600 font-bold py-1 w-[120px] outline-none cursor-pointer"
+                  >
+                    <option value="">Kh├┤ng lß╗ìc</option>
+                    <option value="subWorkName">C├┤ng viß╗çc</option>
+                    <option value="assetName">Khu vß╗▒c</option>
+                    <option value="statusString">Trß║íng th├íi</option>
+                    <option value="time">Thß╗¥i gian nß╗Öp</option>
+                  </select>
+
+                  {filterType && (
+                    <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                      <select
+                        value={filterValue}
+                        onChange={(e) => setFilterValue(e.target.value)}
+                        className="bg-transparent border-none focus:ring-0 text-indigo-600 font-bold py-1 max-w-[150px] outline-none cursor-pointer"
+                      >
+                        <option value="">-- Chß╗ìn gi├í trß╗ï --</option>
+                        {filterOptions.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {filterType === "statusString"
+                              ? // For status, try to map nicely if possible, else original
+                                opt === "1110"
+                                ? "─É├ú xong"
+                                : opt === "1111"
+                                  ? "─É├ú ─æiß╗üu chß╗ënh xong"
+                                  : opt === "1100"
+                                    ? "Chß╗¥ duyß╗çt"
+                                    : opt === "1001"
+                                      ? "─É├ú nß╗Öp lß║íi"
+                                      : opt === "1101"
+                                        ? "Tß╗½ chß╗æi / Chß╗¥ nß╗Öp lß║íi"
+                                        : opt === "1000"
+                                          ? "─Éang l├ám"
+                                          : opt === "0000"
+                                            ? "Ch╞░a thß╗▒c hiß╗çn"
+                                            : `Kh├íc (${opt})`
+                              : opt}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          setFilterType("");
+                          setFilterValue("");
+                        }}
+                        className="p-1 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-rose-500"
+                        title="X├│a bß╗Ö lß╗ìc"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-full sm:w-72">
+                  <ModernInput
+                    placeholder="T├¼m theo t├¬n..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    icon={<Search className="w-4 h-4" />}
+                    className="!bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Table */}
+            {/* Refactored List View (Custom Grid/Flex rows) */}
+            <div className="flex-1 overflow-auto custom-scrollbar p-3 md:p-5 bg-slate-50/50">
+              <div className="w-full lg:min-w-0 pb-12">
+                {/* Header Row */}
+                <div className="hidden md:flex items-center gap-4 px-4 py-3 mb-3 bg-white border border-slate-200 rounded-xl shadow-sm text-[10px] md:text-[11px] font-extrabold text-slate-400 uppercase tracking-wider sticky top-0 z-10 w-full">
+                  {/* Master Checkbox */}
+                  <div className="w-6 md:w-8 flex justify-center shrink-0">
+                    <button
+                      onClick={toggleMaster}
+                      className={`flex items-center justify-center w-5 h-5 rounded border-2 transition-colors ${hasApprovable ? "hover:border-indigo-500" : "hover:border-emerald-500"}`}
+                      style={{
+                        background: isAllChecked
+                          ? masterCheckboxColor
+                          : isIndeterminate
+                            ? hasApprovable
+                              ? "#e0e7ff"
+                              : "#d1fae5"
+                            : "white",
+                        borderColor:
+                          isAllChecked || isIndeterminate
+                            ? masterCheckboxColor
+                            : "#cbd5e1",
+                      }}
+                      title={
+                        hasApprovable
+                          ? "Chß╗ìn tß║Ñt cß║ú hß║íng mß╗Ñc Chß╗¥ duyß╗çt"
+                          : "Chß╗ìn tß║Ñt cß║ú hß║íng mß╗Ñc ─É├ú ho├án th├ánh (─æß╗â b├ío c├ío)"
+                      }
+                    >
+                      {isAllChecked && <Check className="w-3 h-3 text-white" />}
+                      {isIndeterminate && (
+                        <div
+                          className={`w-2 h-0.5 rounded ${hasApprovable ? "bg-indigo-500" : "bg-emerald-500"}`}
+                        />
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex-1 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 shrink-0 overflow-hidden">
+                    <div className="flex-1 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("subWorkName")}
+                        className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors group text-left whitespace-nowrap"
+                      >
+                        C├┤ng viß╗çc {renderSortIcon("subWorkName")}
+                      </button>
+                    </div>
+                    <div className="flex-1 hidden md:block">Tiß║┐n ─æß╗Ö phß╗Ñ</div>
+                  </div>
+                  <div className="w-24 md:w-40 hidden sm:block shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("assetName")}
+                      className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors group text-left"
+                    >
+                      Khu vß╗▒c {renderSortIcon("assetName")}
+                    </button>
+                  </div>
+                  <div className="w-24 md:w-32 text-center flex justify-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("statusString")}
+                      className="flex items-center justify-center gap-1.5 hover:text-indigo-600 transition-colors group"
+                    >
+                      Trß║íng th├íi {renderSortIcon("statusString")}
+                    </button>
+                  </div>
+                  <div className="w-8 md:w-10 text-center shrink-0"></div>
+                </div>
+
+                <div className="space-y-2">
+                  <AnimatePresence>
+                    {sortedTasks.map((task, index) => {
+                      let displayStationName = task.assetName || "-";
+                      const assetObj = stations.find(
+                        (s) => s.id === task.assetId,
+                      );
+                      if (assetObj && assetObj.parent_id) {
+                        const parentObj = stations.find(
+                          (s) => s.id === assetObj.parent_id,
+                        );
+                        if (parentObj) {
+                          displayStationName = `${parentObj.name} - ${task.assetName}`;
+                        }
+                      }
+
+                      const isChecked = checkedIds.has(task.id);
+                      const isApprovable =
+                        task.statusString === "1100" ||
+                        task.statusString === "1001";
+                      const isApproved =
+                        task.statusString === "1110" ||
+                        task.statusString === "1111";
+                      const isRejected = task.statusString === "1101";
+                      const isReportChecked = reportCheckedIds.has(task.id);
+                      const isRejectChecked = rejectCheckedIds.has(task.id);
+
+                      const prcsList =
+                        task.subTasks && task.subTasks.length > 0
+                          ? task.subTasks
+                          : [task];
+
+                      // M├áu viß╗ün mß╗Ång b├¬n tr├íi tuß╗│ theo t├¡nh chß║Ñt c├┤ng viß╗çc
+                      let leftBorderColor = "border-l-slate-200";
+                      if (isApproved) leftBorderColor = "border-l-emerald-500";
+                      else if (isApprovable)
+                        leftBorderColor = "border-l-indigo-500";
+                      else if (isRejected)
+                        leftBorderColor = "border-l-rose-500";
+
+                      return (
+                        <motion.div
+                          key={task.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.02 }}
+                          onClick={() => setSelectedTask(task)}
+                          className={`bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 border-l-[3px] ${leftBorderColor} hover:shadow-md hover:border-indigo-100 group transition-all duration-200 cursor-pointer overflow-hidden flex flex-col md:flex-row items-stretch ${isChecked ? "bg-indigo-50/40 border-indigo-200" : isRejectChecked ? "bg-rose-50/40 border-rose-200" : ""}`}
+                        >
+                          <div className="flex flex-col md:flex-row px-3 py-3 md:py-4 md:px-4 flex-1 min-w-0 relative gap-2.5 md:gap-4 md:items-center">
+                            {/* === MOBILE & DESKTOP TOP HEADER (Checkbox + Title + Status) === */}
+                            <div className="flex items-start md:items-center gap-3 w-full md:w-auto md:flex-1">
+                              {/* CHECKBOX */}
+                              <div
+                                className="w-6 md:w-8 shrink-0 flex items-center justify-center pt-0.5 md:pt-0"
+                                onClick={(e) => {
+                                  if (isApprovable) toggleOne(task.id, e);
+                                  else if (isApproved) toggleReportOne(task.id, e);
+                                  else if (isRejected) toggleRejectOne(task.id, e);
+                                }}
+                              >
+                                {isApprovable ? (
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-indigo-500 border-indigo-500" : "border-slate-300 hover:border-indigo-400 bg-white"}`}>
+                                    {isChecked && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                ) : isApproved ? (
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${isReportChecked ? "bg-emerald-500 border-emerald-500" : "border-slate-200 hover:border-emerald-400 bg-white"}`} title="Chß╗ìn ─æß╗â tß║ío b├ío c├ío">
+                                    {isReportChecked && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                ) : isRejected ? (
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${isRejectChecked ? "bg-rose-500 border-rose-500" : "border-slate-200 hover:border-rose-400 bg-white"}`} title="Chß╗ìn ─æß╗â tß║ío b├ío c├ío sß╗¡a chß╗»a">
+                                    {isRejectChecked && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                ) : (
+                                  <div className="w-5 h-5" />
+                                )}
+                              </div>
+
+                              {/* TASK NAME & TIME */}
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="text-[14px] md:text-[15px] font-bold text-slate-800 line-clamp-2 md:truncate" title={task.subWorkName}>
+                                  {task.subWorkName || "-"}
+                                </div>
+                                <div className="flex items-center gap-2 md:gap-3 mt-1.5 md:mt-1 text-[11px] md:text-xs text-slate-500 flex-wrap">
+                                  {task.submittedAt && !isNaN(parseSafeDate(task.submittedAt).getTime()) && (
+                                      <span className="flex items-center gap-1.5 bg-slate-100 px-1.5 py-0.5 md:px-2 rounded text-slate-600 font-medium whitespace-nowrap">
+                                        <Calendar className="w-3 h-3 text-slate-400" /> {format(parseSafeDate(task.submittedAt), "dd/MM HH:mm")}
+                                      </span>
+                                  )}
+                                  {task.approvalAt && !isNaN(parseSafeDate(task.approvalAt).getTime()) ? (
+                                    <span className="flex items-center gap-1 text-emerald-600 font-medium whitespace-nowrap">
+                                      <CheckCircle className="w-3 h-3" /> {format(parseSafeDate(task.approvalAt), "dd/MM")}
+                                    </span>
+                                  ) : task.rejectedAt && !isNaN(parseSafeDate(task.rejectedAt).getTime()) ? (
+                                    <span className={`flex items-center gap-1 font-medium whitespace-nowrap ${task.statusString === "1001" ? "text-slate-400 line-through" : "text-rose-600"}`}>
+                                      <XCircle className="w-3 h-3" /> {format(parseSafeDate(task.rejectedAt), "dd/MM")}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              {/* MOBILE ONLY STATUS */}
+                              <div className="md:hidden shrink-0 flex items-start pt-1">
+                                {getStatusBadge(task.statusString)}
+                              </div>
+                            </div>
+
+                            {/* === PROGRESS BAR === */}
+                            <div className="w-full md:w-32 lg:w-48 xl:w-64 pl-9 md:pl-0 shrink-0 mt-1 md:mt-0">
+                                <div className="flex items-center justify-between text-[10px] uppercase font-extrabold text-slate-400 mb-1 tracking-wider hidden lg:flex">
+                                  <span>Tiß║┐n tr├¼nh con</span>
+                                  <span className="bg-slate-100 px-1.5 rounded">{prcsList.filter((p) => p.statusApprove === 1 || p.statusWork === 1 || p.statusSubmit === 1).length}/{prcsList.length}</span>
+                                </div>
+                                <div className="flex items-center gap-[2px] w-full h-1.5 lg:h-2 group/progress relative">
+                                  {prcsList.map((p) => {
+                                    let bg = "bg-slate-200";
+                                    if (p.statusApprove === 1) bg = "bg-emerald-500 shadow-sm shadow-emerald-500/20";
+                                    else if (p.statusReject === 1 && p.statusSubmit === 1) bg = "bg-indigo-500 shadow-sm shadow-indigo-500/20";
+                                    else if (p.statusReject === 1) bg = "bg-rose-500 shadow-sm shadow-rose-500/20";
+                                    else if (p.statusSubmit === 1) bg = "bg-amber-400 shadow-sm shadow-amber-400/20";
+                                    else if (p.statusWork === 1 || !!p.noteData) bg = "bg-blue-400";
+
+                                    return <div key={p.id} title={p.processName || "Kh├íc"} className={`h-full flex-1 rounded-full ${bg} transition-all duration-300 hover:opacity-80 cursor-help`} />;
+                                  })}
+                                  <div className="absolute top-4 left-0 right-0 hidden group-hover/progress:flex flex-wrap gap-1 z-30 pt-1">
+                                    {prcsList.map((p) => (
+                                      <span key={`tt-${p.id}`} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white shadow-md border border-slate-100 text-slate-600 truncate max-w-[100px]">{p.processName}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-bold mt-1.5 lg:hidden">
+                                  {prcsList.filter((p) => p.statusApprove === 1 || p.statusWork === 1 || p.statusSubmit === 1).length}/{prcsList.length} tiß║┐n tr├¼nh con
+                                </div>
+                            </div>
+
+                            {/* === DESKTOP KHU Vß╗░C === */}
+                            <div className="hidden md:flex w-24 lg:w-40 shrink-0 items-center gap-2 text-sm text-slate-700 font-bold truncate">
+                              <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                                <Folder className="w-3.5 h-3.5 text-indigo-500" />
+                              </div>
+                              <span className="truncate" title={displayStationName}>{displayStationName}</span>
+                            </div>
+
+                            {/* === MOBILE KHU Vß╗░C === */}
+                            <div className="md:hidden flex items-center gap-1.5 pl-9 text-[11px] font-bold text-slate-500 w-full truncate pb-1">
+                              <Folder className="w-3 h-3 text-indigo-400 shrink-0" />
+                              <span className="truncate">{displayStationName}</span>
+                            </div>
+
+                            {/* === DESKTOP STATUS & ACTION === */}
+                            <div className="hidden md:flex w-24 lg:w-32 justify-center shrink-0 items-center">
+                              {getStatusBadge(task.statusString)}
+                            </div>
+                            
+                            <div className="hidden md:flex w-8 lg:w-10 justify-center shrink-0 pl-1 border-l border-transparent md:group-hover:border-slate-100 transition-colors items-center relative">
+                                {isApprovable && (
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const idsToApprove = task.subTasks && task.subTasks.length > 0
+                                          ? task.subTasks.filter((st) => st.statusString === "1100" || st.statusString === "1001").map((st) => st.id)
+                                          : [task.id];
+                                      if (idsToApprove.length > 0) { await onBulkUpdateStatus(idsToApprove, 1, "Quick Approved"); fetchTasks(); }
+                                    }}
+                                    className="p-1.5 text-emerald-500 hover:text-white hover:bg-emerald-500 rounded-lg transition-all border border-transparent hover:border-emerald-600 opacity-0 group-hover:opacity-100 absolute right-10 bg-white shadow-xl shadow-emerald-500/20 z-20"
+                                    title="Duyß╗çt nhanh lß║¡p tß╗⌐c"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button className="p-1.5 text-slate-300 group-hover:text-indigo-600 group-hover:bg-indigo-50 rounded-lg transition-all" title="Xem chi tiß║┐t hß║íng mß╗Ñc">
+                                  <ChevronRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="empty-state"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col items-center justify-center text-slate-400 relative h-full"
+          >
+            <div className="absolute inset-0 bg-slate-50/50 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)]"></div>
+            <div className="relative z-10 bg-white p-6 rounded-full shadow-xl shadow-slate-200 mb-6 border border-slate-100">
+              <div className="bg-slate-50 p-4 rounded-full">
+                <LayoutGrid className="w-10 h-10 text-slate-300" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-slate-600 relative z-10">
+              Chß╗ìn dß╗▒ ├ín ─æß╗â bß║»t ─æß║ºu quß║ún l├╜
+            </p>
+            <p className="text-sm text-slate-400 mt-2 relative z-10">
+              Dß╗» liß╗çu vß║¡n h├ánh sß║╜ ─æ╞░ß╗úc hiß╗ân thß╗ï chi tiß║┐t tß║íi ─æ├óy
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ΓöÇΓöÇ Floating Bulk Action Bar (via React Portal ΓåÆ mounts to document.body, escapes GlassCard stacking context) ΓöÇΓöÇ */}
+      {ReactDOM.createPortal(
+        <AnimatePresence>
+          {/* ΓöÇΓöÇ Approve/Reject Bar ΓöÇΓöÇ */}
+          {checkedIds.size > 0 && (
+            <motion.div
+              key="approve-bar"
+              initial={{ y: 100, opacity: 0, scale: 0.92 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.92 }}
+              transition={{ type: "spring", stiffness: 500, damping: 35 }}
+              className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-2 py-2 rounded-full backdrop-blur-xl border border-white/10 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,27,75,0.95) 100%)",
+              }}
+            >
+              {/* Badge ─æß║┐m */}
+              <div className="flex items-center gap-2 pl-3 pr-4 border-r border-white/10">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-xs font-black shadow-lg shadow-indigo-500/40">
+                  {checkedIds.size}
+                </div>
+                <span className="text-sm font-semibold text-slate-300 whitespace-nowrap">
+                  hß║íng mß╗Ñc&nbsp;<span className="text-slate-500">┬╖</span>&nbsp;
+                  <span className="text-indigo-300">
+                    {expandedPendingIds.length} quy tr├¼nh
+                  </span>
+                </span>
+              </div>
+
+              {/* N├║t Duyß╗çt */}
+              <button
+                onClick={handleBulkApprove}
+                disabled={bulkLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 disabled:opacity-50 rounded-full text-sm font-bold transition-all duration-200 shadow-lg shadow-emerald-500/30 text-white"
+              >
+                {bulkLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                Duyß╗çt tß║Ñt cß║ú
+              </button>
+
+              {/* N├║t Tß╗½ chß╗æi */}
+              <button
+                onClick={handleBulkReject}
+                disabled={bulkLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-500 to-rose-400 hover:from-rose-400 hover:to-rose-300 disabled:opacity-50 rounded-full text-sm font-bold transition-all duration-200 shadow-lg shadow-rose-500/30 text-white"
+              >
+                <X className="w-4 h-4" />
+                Tß╗½ chß╗æi
+              </button>
+
+              {/* N├║t huß╗╖ */}
+              <button
+                onClick={() => setCheckedIds(new Set())}
+                className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
+                title="Bß╗Å chß╗ìn tß║Ñt cß║ú"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
+          {/* ΓöÇΓöÇ Report Bar (─É├ú duyß╗çt / Tß║ío b├ío c├ío) ΓöÇΓöÇ */}
+          {reportCheckedIds.size > 0 && checkedIds.size === 0 && (
+            <motion.div
+              key="report-bar"
+              initial={{ y: 100, opacity: 0, scale: 0.92 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.92 }}
+              transition={{ type: "spring", stiffness: 500, damping: 35 }}
+              className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-2 py-2 rounded-full backdrop-blur-xl border border-emerald-400/20 shadow-[0_8px_40px_-8px_rgba(16,185,129,0.4)]"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(6,78,59,0.97) 0%, rgba(5,46,37,0.97) 100%)",
+              }}
+            >
+              {/* Badge ─æß║┐m */}
+              <div className="flex items-center gap-2 pl-3 pr-4 border-r border-emerald-400/20">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-xs font-black shadow-lg shadow-emerald-500/40">
+                  {reportCheckedIds.size}
+                </div>
+                <span className="text-sm font-semibold text-emerald-200 whitespace-nowrap">
+                  hß║íng mß╗Ñc ─æ├ú duyß╗çt
+                </span>
+              </div>
+
+              {/* N├║t tß║ío b├ío c├ío */}
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 rounded-full text-sm font-bold transition-all duration-200 shadow-lg shadow-emerald-500/30 text-white"
+              >
+                <FileText className="w-4 h-4" />
+                Tß║ío B├ío C├ío Nghiß╗çm thu
+              </button>
+
+              {/* N├║t huß╗╖ */}
+              <button
+                onClick={() => setReportCheckedIds(new Set())}
+                className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-emerald-300 hover:text-white"
+                title="Bß╗Å chß╗ìn"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
+          {/* ΓöÇΓöÇ Reject Bar (Tß╗½ chß╗æi / Tß║ío b├ío c├ío sß╗¡a chß╗»a) ΓöÇΓöÇ */}
+          {rejectCheckedIds.size > 0 &&
+            checkedIds.size === 0 &&
+            reportCheckedIds.size === 0 && (
+              <motion.div
+                key="reject-report-bar"
+                initial={{ y: 100, opacity: 0, scale: 0.92 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 100, opacity: 0, scale: 0.92 }}
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-2 py-2 rounded-full backdrop-blur-xl border border-rose-400/20 shadow-[0_8px_40px_-8px_rgba(244,63,94,0.35)]"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(76,5,25,0.97) 0%, rgba(136,19,55,0.97) 100%)",
+                }}
+              >
+                {/* Badge ─æß║┐m */}
+                <div className="flex items-center gap-2 pl-3 pr-4 border-r border-rose-400/20">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center text-xs font-black shadow-lg shadow-rose-500/40">
+                    {rejectCheckedIds.size}
+                  </div>
+                  <span className="text-sm font-semibold text-rose-200 whitespace-nowrap">
+                    hß║íng mß╗Ñc bß╗ï tß╗½ chß╗æi
+                  </span>
+                </div>
+
+                {/* N├║t tß║ío b├ío c├ío sß╗¡a chß╗»a */}
+                <button
+                  onClick={() => setShowRejectReportModal(true)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-500 to-orange-400 hover:from-rose-400 hover:to-orange-300 rounded-full text-sm font-bold transition-all duration-200 shadow-lg shadow-rose-500/30 text-white"
+                >
+                  <FileText className="w-4 h-4" />
+                  Tß║ío B├ío C├ío Sß╗¡a Chß╗»a
+                </button>
+
+                {/* N├║t huß╗╖ */}
+                <button
+                  onClick={() => setRejectCheckedIds(new Set())}
+                  className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-rose-300 hover:text-white"
+                  title="Bß╗Å chß╗ìn"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
+      {/* Report Modal - Nghß╗çm thu */}
+      {showReportModal && (
+        <BulkTaskReportModal
+          tasks={tasks.filter((t) => reportCheckedIds.has(t.id))}
+          assignId={tasks[0]?.assignId || ""}
+          projectName={tasks[0]?.projectName || ""}
+          isAllSelected={isAllApprovedSelected}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
+
+      {/* Reject Report Modal - Sß╗¡a chß╗»a */}
+      {showRejectReportModal && (
+        <BulkTaskReportModal
+          tasks={tasks.filter((t) => rejectCheckedIds.has(t.id))}
+          assignId={tasks[0]?.assignId || ""}
+          projectName={tasks[0]?.projectName || ""}
+          isAllSelected={isAllRejectSelected}
+          type="reject"
+          onClose={() => setShowRejectReportModal(false)}
+        />
+      )}
+    </GlassCard>
+  );
+};
+
+export default TaskTable;

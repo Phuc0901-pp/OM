@@ -1,0 +1,37 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / Frontend build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/
+frontend/.env.local
+
+# Go binaries
+backend/main
+backend/*.exe
+backend/tmp/
+
+# Debug & temporary files
+dump.txt
+debug_*.go
+**/debug_*.js
+**/split.cjs
+frontend/debug_configs.js
+
+# Env files (secrets)
+.env
+backend/.env
+deploy/.env
+
+# Docker generated
+*.tar
+om_images.tar
+OM_Offline_Package.tar.gz
+
+# Logs
+*.log
