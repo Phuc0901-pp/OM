@@ -1,160 +1,241 @@
 # Raitek O&M - Hệ Thống Quản Lý Vận Hành & Bảo Trì Điện Mặt Trời
 
-*(Phiên bản Enterprise V6.3.2 | Đánh giá Hệ thống: 10/10)*
+*(Phiên bản Enterprise V6.3.2 | Cập nhật lần cuối: 2026)*
 
-**Tài liệu này là bản tổng hợp kỹ thuật và nghiệp vụ toàn diện nhất, thay thế cho toàn bộ các tài liệu phân mảnh trước đây.**
+**Raitek O&M (Operations & Maintenance)** là nền tảng hệ thống phần mềm cấp doanh nghiệp (Enterprise-grade) chuyên biệt được thiết kế để số hóa toàn diện quy trình quản lý, giám sát và thực thi bảo trì cho các nhà máy điện năng lượng mặt trời. Hệ thống giải quyết triệt để các bài toán vận hành ngoài hiện trường (nơi sóng yếu hoặc không có mạng) thông qua kiến trúc Offline-First, đồng thời quản lý khối lượng dữ liệu khổng lồ bằng mô hình dữ liệu phân cấp phức hợp.
 
----
-
-## Mục Lục
-1. [Giới Thiệu Hệ Thống](#1-giới-thiệu-hệ-thống)
-2. [Kiến Trúc & Công Nghệ Cốt Lõi (Tech Stack)](#2-kiến-trúc--công-nghệ-cốt-lõi-tech-stack)
-3. [Luồng Vận Hành Nghiệp Vụ (Workflows)](#3-luồng-vận-hành-nghiệp-vụ-workflows)
-4. [Các Tính Năng Công Nghệ Nổi Bật (Enterprise Features)](#4-các-tính-năng-công-nghệ-nổi-bật-enterprise-features)
-5. [Hướng Dẫn Build & Triển Khai (Deployment Guide)](#5-hướng-dẫn-build--triển-khai-deployment-guide)
-6. [Cấu Trúc Thư Mục & API](#6-cấu-trúc-thư-mục--api)
-7. [Bảng Mã Lỗi & Xử Lý Sự Cố (Troubleshooting)](#7-bảng-mã-lỗi--xử-lý-sự-cố-troubleshooting)
+Tài liệu này là bản tổng hợp kỹ thuật và nghiệp vụ toàn diện nhất, đóng vai trò như một Cẩm nang Hệ thống (System Architecture Document) dành cho các Kỹ sư, Lập trình viên và Nhà Quản trị.
 
 ---
 
-## 1. Giới Thiệu Hệ Thống
-
-**Raitek O&M (Operations & Maintenance)** là nền tảng quản lý chuyên biệt dành cho các nhà máy điện năng lượng mặt trời. 
-Hệ thống giải quyết triệt để bài toán số hóa quy trình giao việc, thực thi ngoài hiện trường, báo cáo sự cố, và kiểm duyệt. Điểm mạnh nhất của hệ thống là khả năng vận hành trơn tru ở các vùng lõm sóng (Offline-Capable) và hệ thống phân cấp thiết bị đa tầng (Hierarchical Data Model).
-
-Ứng dụng có thể chạy mượt mà trên Desktop (dành cho quản lý) và Mobile Web (PWA) để kỹ sư có thể mang ra công trường khảo sát.
-
----
-
-## 2. Kiến Trúc & Công Nghệ Cốt Lõi (Tech Stack)
-
-Hệ thống tuân thủ thiết kế **Clean Architecture**:
-
-- **Frontend (Mobile-First SPA):**
-  - ReactJS 18 (Vite, TypeScript), Tailwind CSS.
-  - Quản lý trạng thái cục bộ với Zustand. Bắt sự kiện mạng qua Service Workers (PWA).
-  - Tích hợp HTML5 Canvas & Geolocation Native API để xử lý ảnh trực tiếp tại trình duyệt.
-- **Backend (High-Performance RESTful API):**
-  - Golang (Gin Framework), tuân thủ Standard Go layout.
-  - ORM: GORM kết nối PostgreSQL 15.
-  - Authentication: JWT Token.
-  - Background processes: Robfig Cron.
-- **Lưu Trữ & Infra (Infrastructure):**
-  - Database: PostgreSQL (Relational Data).
-  - Object Storage: MinIO (tương thích AWS S3), chuyên lưu trữ hình ảnh check-in và file đính kèm tốc độ cao.
-  - Reverse Proxy: Nginx.
-  - Đóng gói: Hoàn toàn container hóa bằng Docker & Docker-Compose.
-
-**Hierarchical Data Model (Cấu trúc dữ liệu):**
-`Dự án (Project)` ➔ `Nhà máy (Plant)` ➔ `Biến tần (Inverter)` ➔ `Tấm pin/Tủ điện (Panel/String)`. Phân bổ công việc (Task) được gán vào 1 Node nhỏ nhất để dễ chẩn đoán và cô lập.
+## 📖 Mục Lục
+1. [Kiến Trúc & Công Nghệ Cốt Lõi (Tech Stack)](#1-kiến-trúc--công-nghệ-cốt-lõi-tech-stack)
+2. [Sơ Đồ Khối & Quy Trình Nghiệp Vụ (Workflows)](#2-sơ-đồ-khối--quy-trình-nghiệp-vụ-workflows)
+3. [Các Tính Năng Công Nghệ Cốt Lõi (Enterprise Features)](#3-các-tính-năng-công-nghệ-cốt-lõi-enterprise-features)
+4. [Hướng Dẫn Build & Triển Khai (Deployment Guide)](#4-hướng-dẫn-build--triển-khai-deployment-guide)
+5. [Cấu Trúc Thư Mục Hệ Thống](#5-cấu-trúc-thư-mục-hệ-thống)
+6. [Bảng Mã Lỗi & Xử Lý Sự Cố (Troubleshooting)](#6-bảng-mã-lỗi--xử-lý-sự-cố-troubleshooting)
 
 ---
 
-## 3. Luồng Vận Hành Nghiệp Vụ (Workflows)
+## 1. Kiến Trúc & Công Nghệ Cốt Lõi (Tech Stack)
 
-Hệ thống được chia làm hai phân hệ quyền lớn: Cấp Quản lý (Trạm trưởng) và Kỹ sư hiện trường.
+Hệ thống được thiết kế theo tiêu chuẩn **Clean Architecture** và **Microservices-ready**, chia cắt rõ ràng giữa Frontend, Backend và Infrastructure.
 
-### 3.1 Cấp Quản Lý (Vận Hành & Điều Phối)
-- **Tạo Cấu trúc & Biểu mẫu (Master Data):** Khởi tạo khung thiết bị của nhà máy và cấu hình Biểu mẫu (Checklist/Form) cho từng dạng bảo trì (vệ sinh, kiểm tra áp, v.v.).
-- **Giao Việc (Allocation):** Chỉ định một Công việc + Biểu mẫu bảo trì + Kỹ sư, áp đặt Deadline lên 1 Thiết bị cụ thể.
-- **Theo dõi Tiến độ (Operations Board):** Màn hình Data Grid lưới lớn giúp quản lý giám sát tiến độ của cả ngàn thiết bị trong vài giây dựa trên màu sắc Badge (Xanh=Xong, Vàng=Chờ duyệt, Đỏ=Trễ/Lỗi).
-- **Phê duyệt (Approve/Reject):** Sau khi Kỹ sư nộp bài, Quản lý click vào bảng để chấm điểm, xem lại ảnh minh chứng và nhấn `Approve` hoặc `Reject` yêu cầu làm lại.
+### 1.1. Frontend (Mobile-First SPA & PWA)
+- **Core Framework:** ReactJS 18 (Vite, TypeScript), kết hợp Tailwind CSS.
+- **State Management:** Zustand (quản lý trạng thái), kết hợp React Query để caching.
+- **Offline Capabilities:** Service Workers (PWA) bắt sự kiện mạng mạng, kết hợp `IndexedDB` lưu trữ tạm thời khối lượng lớn dữ liệu (Blob Ảnh, Báo cáo).
+- **Native APIs:** Tích hợp sâu HTML5 Canvas (Nén ảnh tại Client) và Geolocation API (Định vị vệ tinh).
 
-### 3.2 Kỹ Sư Hiện Trường (Thực Thi Offline)
-- **Đăng nhập & Check-in:** Mở app trên điện thoại. Xem lịch làm việc ở mục **Môi Trường / Bảo Trì**. Bấm bắt đầu để chốt Timestamp chính xác.
-- **Điền Biểu mẫu (Forms):** Nhập các thông số đo đạc điện áp, dòng điện thực tế. Tính năng *Auto-save on Blur* sẽ tự bảo vệ nội dung nháp đang viết lỡ mất mạng.
-- **Chụp ảnh Minh chứng:** Sử dụng **Camera nội bộ WebRTC** của hệ thống (bị khóa upload file ngoài).
-- **Nộp Báo cáo:** Kiểm tra và bấm Submit. Dữ liệu sẽ lập tức được đẩy về kho của Quản lý thông qua hệ thống Queue ngầm.
+### 1.2. Backend (High-Performance RESTful API)
+- **Core Framework:** Golang 1.22+ (Gin Web Framework), tối ưu hóa luồng I/O đồng thời bằng Goroutines.
+- **Architecture:** Standard Go Layout (Cmd, Internal, Adapters, Core/Services, Domain).
+- **Database ORM:** GORM.
+- **Bảo mật:** Stateless Authentication bằng JWT Token ký chuẩn mã hóa HS256.
+- **Background Tasks:** Robfig Cron scheduler xử lý các tác vụ đồng bộ NAS, Export PDF định kỳ.
 
----
-
-## 4. Các Tính Năng Công Nghệ Nổi Bật (Enterprise Features)
-
-### 4.1. The Camera Anti-Fraud Engine (Hệ thống Camera Chống Gian Lận)
-- **GPS Injection & Reverse Geocoding:** App gọi thẳng vệ tinh, giải mã tọa độ thành địa chỉ đường thực tế và chèn 1 bản đồ Minimap vào góc phải của tấm ảnh. Mọi bức hình đều chứng minh được kỹ sư thực sự đang đứng tại trạm.
-- **Horizon Leveling (Thước thủy Vector):** Áp dụng toán học chiếu Vector Trọng Lực (Gravity Projection), khóa cứng ảnh ở cạnh đúng (0°, 90°, 180°, 270°) theo đường chân trời. Tấm ảnh đóng dấu luôn thẳng thớm dù kỹ sư thao tác úp/ngửa máy.
-- **Canvas Compression (Nén nội suy Trình duyệt):** 1 bức ảnh 7MB từ Camera 4K được nén xuống FullHD (1920px) chất lượng 80% chỉ còn ~300KB trước khi gửi qua mạng 3G/4G, mà vẫn đủ sắc nét soi rõ đinh ốc.
-
-### 4.2. Khả năng Offline-First Tuyệt Đối
-- **SyncQueue & The Race Condition Kill:** Thao tác "Nộp bài" được tách độc lập với việc "Gửi file lên mạng". Nếu người dùng mất kết nối Internet, ảnh lưu trực tiếp bằng mảng nhị phân Blob vào `IndexedDB`.
-- **Background Sync Machine:** Khi có lại mạng (`navigator.onLine` kết hợp cơ chế bắn Active Ping Server để né giả lập LAN), Web sẽ tự dùng một Background Service tuần tự đẩy các dòng ảnh nháp lên MinIO.
-- **Garbage Collector (GC):** Bộ dọn dẹp bộ nhớ chạy mỗi lần mở app, tự động xóa các bức ảnh nháp quá 7 ngày lưu ở ROM Điện thoại hoặc các File tải lỗi quá 5 lần để tránh điện thoại bị đầy dung lượng.
+### 1.3. Hệ Sinh Thái Lưu Trữ & Triển Khai (Infrastructure)
+- **Cơ sở dữ liệu Quan hệ (RDBMS):** PostgreSQL 15 (Lưu trữ Structured Data, Task, Hierarchy).
+- **Lưu trữ Đối tượng (Object Storage):** MinIO (S3-Compatible), chuyên dụng để streaming và lưu trữ hình ảnh hiện trường, file PDF báo cáo tốc độ cao.
+- **Message Queue:** RabbitMQ (Xử lý hàng đợi tác vụ nặng nếu mở rộng microservices).
+- **Đóng gói & Reverse Proxy:** Toàn bộ hệ thống chạy trên Docker Containers, Nginx đóng vai trò Load Balancer và API Gateway.
 
 ---
 
-## 5. Hướng Dẫn Build & Triển Khai (Deployment Guide)
+## 2. Sơ Đồ Khối & Quy Trình Nghiệp Vụ (Workflows)
 
-### 5.1 Đóng gói cho Môi Trường Giao Dịch (Production)
-Dự án được tối ưu để chỉ mất vài dòng lệnh tạo một "gói" (Tarball) mang vào những nhà máy điện khép kín không hề có Internet (Air-gapped enviroment).
+Hệ thống xoay quanh 2 phân quyền chính: **Cấp Quản Lý** (Tạo job, phê duyệt, giám sát) và **Cấp Kỹ Sư** (Nhận job, thi công offline, thu thập dữ liệu).
 
-*Bước 1: Build bộ Docker Images trên máy có mạng*
-```powershell
-docker build -t raitek/om-frontend:latest ./frontend
-docker build -t raitek/om-backend:latest ./backend
-# Export cả 4 hình khối (Web, API, MinIO, Postgres) ra 1 file ~250MB
-docker save raitek/om-frontend:latest raitek/om-backend:latest postgres:15-alpine minio/minio:latest -o OM_Offline_Deployment/om_images.tar
-# Xong, bạn có thể Zip thư mục OM_Offline_Deployment lại và Copy vào USB.
+### 2.1. Sơ Đồ Khối Tổng Thể Hệ Thống (System Architecture)
+
+```mermaid
+graph TD
+    subgraph Client ["Frontend (Người dùng)"]
+        UI["Trình Duyệt (Web/PWA)"]
+        IDB[("IndexedDB (Offline)")]
+        SW["Service Worker (Mạng)"]
+        
+        UI <--> IDB
+        UI <--> SW
+    end
+
+    subgraph API_Gateway ["Gác Cổng"]
+        Nginx["Nginx Reverse Proxy"]
+    end
+
+    subgraph Backend_Services ["Golang Backend"]
+        API["REST API (Gin)"]
+        PDF["PDF Render Engine"]
+        Sync["Lark/NAS Sync Agent"]
+    end
+
+    subgraph Infrastructure ["Lưu Trữ Đám Mây / Local"]
+        DB[("PostgreSQL (Dữ liệu)")]
+        MinIO[("MinIO (File, Ảnh, PDF)")]
+    end
+
+    SW <-->|"HTTP/REST"| Nginx
+    Nginx <--> API
+    API <--> PDF
+    API <--> Sync
+    
+    API <-->|"Truy vấn SQL"| DB
+    API <-->|"S3 Protocol"| MinIO
+    PDF -->|"Lưu trữ PDF"| MinIO
 ```
 
-*Bước 2: Cài Đặt Tại Server Nhà Máy (Server Linux)*
+### 2.2. Quy Trình 1: Thu thập dữ liệu Hiện trường & Upload (Offline-First Pipeline)
+Đây là trái tim của hệ thống, giúp kỹ sư lưu trữ dữ liệu tại các vùng lõm sóng (ví dụ: sa mạc năng lượng mặt trời).
+
+```mermaid
+sequenceDiagram
+    participant Kỹ Sư (PWA)
+    participant Trình Duyệt (Local)
+    participant API Backend
+    participant MinIO Storage
+    participant PostgreSQL
+
+    Kỹ Sư (PWA)->>Trình Duyệt (Local): Chụp ảnh & Nhập thông số bảo trì
+    Trình Duyệt (Local)->>Trình Duyệt (Local): Nén Canvas + Chèn Tọa độ (Watermark)
+    
+    alt Không có Mạng (Offline)
+        Trình Duyệt (Local)->>Trình Duyệt (Local): Lưu Ảnh (Blob) & Dữ liệu vào IndexedDB
+        Trình Duyệt (Local)-->>Kỹ Sư (PWA): Báo "Đã lưu nháp thành công"
+    else Có Mạng (Online) hoặc Khi có mạng lại (Background Sync)
+        Trình Duyệt (Local)->>API Backend: Gửi Request (Dữ liệu JSON + File Hình)
+        API Backend->>MinIO Storage: Push File Hình thô lên Bucket Storage
+        MinIO Storage-->>API Backend: Trả về URL File Hình ảnh (Object Link)
+        API Backend->>PostgreSQL: Lưu Dữ liệu JSON & Link MinIO URL vào Database
+        PostgreSQL-->>API Backend: Xác nhận Transaction
+        API Backend-->>Trình Duyệt (Local): HTTP 200 OK (Thành công)
+        Trình Duyệt (Local)->>Trình Duyệt (Local): Xóa Dữ liệu nháp khỏi IndexedDB
+    end
+```
+
+### 2.3. Quy Trình 2: Phân bổ công việc & Phê duyệt (Allocation & Approval Flow)
+Luồng kiểm soát chất lượng từ Cấp Quản lý xuống Kỹ sư thực thi.
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT : Quản lý lên Kế hoạch (Assign)
+    DRAFT --> IN_PROGRESS : Kỹ sư Check-in Hiện trường
+    IN_PROGRESS --> PENDING_REVIEW : Kỹ sư nộp Báo cáo (Submit)
+    
+    state PENDING_REVIEW {
+        direction LR
+        Kiểm_tra_Ảnh --> So_sánh_Thông_số
+    }
+    
+    PENDING_REVIEW --> APPROVED : Quản lý Duyệt (Đạt chuẩn)
+    PENDING_REVIEW --> REJECTED : Quản lý Từ chối (Làm lại)
+    
+    REJECTED --> IN_PROGRESS : Kỹ sư phải đi làm lại
+    APPROVED --> [*] : Hoàn tất Task (Tạo Export PDF/Sync NAS)
+```
+
+---
+
+## 3. Các Tính Năng Công Nghệ Cốt Lõi (Enterprise Features)
+
+### 3.1. The Camera Anti-Fraud Engine (Hệ thống Camera Chống Gian Lận)
+- **GPS Injection & Reverse Geocoding:** Ứng dụng gọi thẳng hệ thống vệ tinh, giải mã tọa độ thành địa chỉ đường thực tế và chèn 1 bản đồ Minimap vào góc phải của tấm ảnh (Watermark bất biến). Đảm bảo tính minh bạch tuyệt đối.
+- **Horizon Leveling (Thước thủy Vector):** Áp dụng toán học chiếu Vector Trọng Lực (Gravity Projection), khóa cứng ảnh ở cạnh chuẩn (0°, 90°, 180°, 270°) theo đường chân trời. Tấm ảnh đóng dấu luôn ngay ngắn dù kỹ sư thao tác úp/ngửa điện thoại.
+- **Canvas Compression (Nén nội suy Trình duyệt):** Tối ưu băng thông mạng. Một bức ảnh 7MB từ Camera 4K được nén xuống độ phân giải FullHD (1920px) chất lượng 80% chỉ còn ~300KB trước khi gửi qua mạng 3G/4G, mà vẫn đủ độ nét soi rõ vật tư.
+
+### 3.2. SyncQueue & Garbage Collector (Offline-First Kháng Đứt Cáp)
+- **The Race Condition Kill:** Thao tác "Nộp bài" được tách độc lập với việc "Upload file". Nếu kỹ sư bấm nộp khi xe đang đi vào vùng mất sóng, dữ liệu sẽ nằm ở `IndexedDB`.
+- **Background Sync Machine:** Một cỗ máy chạy ngầm (Service Worker/Interval Queue) sẽ bắn `Active Ping` để kiểm tra Internet thật. Khi có kết nối, nó tuần tự đẩy các dòng ảnh nháp lên MinIO mà không cần kỹ sư phải thao tác lại.
+- **Garbage Collector (GC):** Tự động dọn dẹp các bức ảnh nháp quá 7 ngày lưu trữ trong ROM Điện thoại hoặc các file tải lỗi quá 5 lần để giải phóng dung lượng rác cho thiết bị.
+
+### 3.3. Standard Operating Procedures (SOP) & Guideline Portal
+- Hiển thị tài liệu **Hướng dẫn vận hành chuẩn (SOP)** trực quan bằng Portal ngay trên giao diện thi công. Kỹ sư có thể mở Modal đè lên mọi Layer để vừa đọc sơ đồ kỹ thuật, vừa thực hiện thao tác bảo dưỡng tại trạm.
+
+### 3.4. Kiến Trúc Dữ Liệu Phân Cấp (Hierarchical Data Model)
+Quản lý thiết bị theo cây phả hệ độ sâu lớn: `Dự án` ➔ `Khu Vực` ➔ `Inverter` ➔ `Tấm Pin/Tủ điện`. Cấu trúc này giúp cô lập chính xác vị trí phát sinh lỗi của linh kiện trong cụm nhà máy hàng trăm hecta.
+
+---
+
+## 4. Hướng Dẫn Build & Triển Khai (Deployment Guide)
+
+### 4.1. Đóng gói Offline Deploy (Air-Gapped Environment)
+Dành cho việc cài đặt phần mềm lên Server cục bộ tại Nhà máy điện không có kết nối Internet ra ngoài.
+
+**Bước 1: Đóng gói tại máy phát triển (Có Internet)**
+Chạy đoạn mã sau trên PowerShell để kéo hạ tầng, build app và nén thành 1 gói duy nhất:
+```powershell
+docker pull postgres:15-alpine
+docker pull minio/minio:latest
+docker pull rabbitmq:3-management-alpine
+
+docker build --no-cache -t raitek/om-frontend:latest ./frontend
+docker build --no-cache -t raitek/om-backend:latest ./backend
+docker build --no-cache -t raitek/om-sync-agent:latest ./deploy/sync-agent
+
+# Gom toàn bộ Image thành file Tarball
+docker save raitek/om-frontend:latest raitek/om-backend:latest raitek/om-sync-agent:latest postgres:15-alpine minio/minio:latest rabbitmq:3-management-alpine -o OM_Offline_Deployment/om_images.tar
+
+# Nén toàn bộ cấu hình + Images mang đi triển khai
+tar -czf OM_Offline_Package.tar.gz -C ./ OM_Offline_Deployment
+```
+
+**Bước 2: Triển khai tại Server Nhà Máy (Không Internet)**
+Mang file `OM_Offline_Package.tar.gz` cắm USB vào Server Linux:
 ```bash
-# Sau khi mang file nén lên Server và giải nén
+tar -xzf OM_Offline_Package.tar.gz
 cd OM_Offline_Deployment
-# 1. Đập hộp Docker Images từ USB
+
+# Đập hộp toàn bộ Docker Images
 docker load -i om_images.tar
-# 2. Sinh cấu hình
-cp configs/.env.example configs/.env
-# Thêm các biến: DB_PASSWORD, MINIO_SECRET_KEY, JWT_SECRET
-# 3. Kích hoạt toàn bộ cụm
+
+# Cấu hình môi trường và khởi chạy
+cp deployments/env.example deployments/.env
 docker network create raitek_server || true
 cd deployments
-docker compose up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 ---
 
-## 6. Cấu Trúc Thư Mục & API
+## 5. Cấu Trúc Thư Mục Hệ Thống
 
-**Sơ đồ Tóm Tắt:**
 ```text
 OM/
-├── backend/                       # Nền tảng GO RESTful API
-│   ├── cmd/api/main.go          # Khởi động Service
-│   ├── internal/                # Clean Architecture Logic (Domain, Services, Repository)
-│   └── migrations/              # Script khởi tạo DB
-├── frontend/                      # Nền tảng React TypeScript
-│   ├── src/pages/               # Root Views (Manager, User, Auth)
-│   ├── src/components/common/   # View Chia sẻ (Đặc biệt là CameraModal.tsx)
-│   ├── src/services/offline/    # Tầng Database Trình duyệt (SyncQueue, IDBStore)
-│   └── nginx.conf               # Luồng gác cổng Production (Reverse Proxy)
-└── OM_Offline_Deployment/         # Folder cấu trúc ra Build
+├── backend/                       # Golang RESTful API (Port 4000)
+│   ├── cmd/api/main.go          # Entry point
+│   ├── internal/                # Clean Architecture Logic (Domain, Services, Repo)
+│   └── migrations/              # Database Schema init
+├── frontend/                      # React TypeScript SPA (Port 80)
+│   ├── src/pages/               # Views (Manager, User, Dashboard)
+│   ├── src/components/          # Tái sử dụng (CameraModal, SOP Guideline, Hierarchy)
+│   └── src/services/offline/    # Lớp Database Browser (IndexedDB, Queue)
+├── deploy/                        # Các Script và Agent hỗ trợ đồng bộ (Sync Agent)
+└── OM_Offline_Deployment/         # Cấu trúc dành riêng cho triển khai Air-gapped
+    ├── deployments/             # Chứa docker-compose.yml và biến môi trường
+    └── auto_start.sh            # Script tự kích hoạt khi Server khởi động lại
 ```
 
-**Truy Cập API (Swagger):** 
-Chạy Backend và truy cập: `http://localhost:4000/swagger/index.html` để lấy toàn bộ Specs tiêu chuẩn OpenAPI (GET, POST Checkin, Allocation...).
-
 ---
 
-## 7. Bảng Mã Lỗi & Xử Lý Sự Cố (Troubleshooting)
+## 6. Bảng Mã Lỗi & Xử Lý Sự Cố (Troubleshooting)
 
-Đây là tài liệu nằm lòng cho Kỹ sư và BP. Quản Trị Hệ Thống.
+### 6.1. Mảng Frontend & Trình Duyệt
 
-### 7.1 Mảng Frontend / Thiết Bị Đi Động
-| Triệu Chứng / Lỗi | Xác Định Nguyên Nhân | Cách Xử Lý Triệt Để |
+| Lỗi / Triệu Chứng | Nguyên Nhân | Cách Xử Lý |
 | :--- | :--- | :--- |
-| **White Screen of Death** <br/>*(Trắng màn hình khi vào Web)* | Bộ đệm cache trình duyệt lưu bản file `index.html` cũ, trong khi phiên bản build js trên Nginx Server đã bị xóa/đúp đè. | **Xóa Cache Trình Duyệt:**<br/>- **iOS Safari:** Ở thanh địa chỉ tải, bấm "Aa", chọn "Tải lại bỏ chặn nội dung" / Xóa lịch sử.<br/>- **Android Chrome:** Xóa dữ liệu Browser cache "Từ trước đến nay". |
-| **Camera Không Lên - Màn Hình Đen** | Do thiết bị không cấp quyền API nhạy cảm (`getUserMedia`) hoặc gọi bằng HTTP thường khóa bảo mật. | - Xác nhận kết nối HTTPS hoặc môi trường Localhost hợp lệ.<br/>- Bấm hình **Ổ Khóa** góc trái URL trình duyệt ➔ `Cài đặt trang web` (Site Settings) ➔ **Allow** Quyền `Máy ảnh` và `Vị trí`. F5 lại. |
-| **Popup "Camera Off" Hiện Màu Đen Góc App** | Phần cứng hoặc Windows System cấm thiết bị thu hình từ gốc. | Đây là thông báo OSD (On-Screen Display) của OS, do người dùng lỡ ấn phím tắt `Fn + F8/Camera` hoặc gạt chốt cơ vật lý che camera trên Laptop (Asus/Lenovo). Mở lại chốt vật lý để dùng. |
-| **Dấu Watermark mất Bản Đồ - `[---, ---]`** | Module Geocoding lấy kinh độ bị sai lệch do che chắn hoặc điện thoại giới hạn quyền độ phân giải cao. | 1. Điện thoại phải kích hoạt **Vị trí độ chính xác cao (Precise Location)** trong Settings gốc của App Trình Duyệt!<br/>2. Di chuyển khỏi không gian lồng Faraday (như gầm trạm biến thế sắt kính) khoảng 5 giây ra trời quang thiết bị mới bắt được vệ tinh. |
+| **Màn Hình Trắng (White Screen)** | Cache trình duyệt đang ngậm bản `index.html` cũ. | **Xóa Cache Trình Duyệt:**<br/>- **iOS Safari:** "Tải lại bỏ chặn nội dung" / Xóa lịch sử.<br/>- **Android Chrome:** Xóa "Cookie và Dữ liệu trang web". |
+| **Màn Hình Camera Đen Thun** | Chưa cấp quyền API `getUserMedia` hoặc bị chặn bởi giao thức HTTP thường. | - Đảm bảo URL là HTTPS.<br/>- Nhấn ổ khóa trên URL ➔ Cài đặt trang ➔ **Cho phép (Allow)** Máy Ảnh và Vị Trí. |
+| **Mất Bản đồ Watermark [---, ---]** | Module Geocoding lấy tọa độ thất bại (Thiết bị giới hạn quyền hoặc bị che chắn vệ tinh). | 1. Bật **Vị trí chính xác cao (Precise Location)** trong Settings điện thoại.<br/>2. Di chuyển khỏi mái che tôn/kính 5s để bắt sóng GPS. |
 
-### 7.2 Mảng Backend / Kết Nối Mạng (Network & Storage)
-| Mã Lỗi API | Diễn Giải Logic Lỗi | Chuẩn Đoán & Phương Pháp Sửa Chữa |
+### 6.2. Mảng Backend & Hạ Tầng
+
+| Mã Lỗi API | Logic Lỗi | Phương Pháp Giải Quyết |
 | :--- | :--- | :--- |
-| **HTTP 401** | *Unauthorized (Sai JWT Token)* | Token JWT bị hết hạn. App sẽ tự đá ra khỏi trang (`MobileLogin`). Các thao tác nền như SyncQueue (Gửi ảnh ngầm) sẽ tự cúp luồng, ôm chặt data nháp không upload nữa và không đánh dấu Failed. Chỉ tiếp tục Sync khi User đăng nhập lại tài khoản hợp lệ. |
-| **HTTP 403** | *Forbidden Access (Vượt Quyền)* | Tài khoản kỹ sư đang cố gắng call API Endpoint của Manager. |
-| **HTTP 408** | *Timeout / Request Too Large* | Do Server xử lý đường truyền kém quá lâu nên tự hủy thao tác. Kiểm tra lại module Capture nén dung lượng, đảm bảo `quality` Canvas nằm ở mức `< 0.8` để Payload Body không lớn quá Nginx cho phép. |
-| **SYNC_00** | *Fake Network Status* | Điện thoại bắt trúng 1 cục Wifi rỗng (không cắm dây Internet), `navigator.onLine` báo là có mạng nhưng Ping API `HEAD /api/health` trả HTTP lỗi chặn. ➔ Để yên hệ thống tự chạy ngầm chờ vòng Loop 30s tiếp theo rò mạng mới. |
-| **DB_01** | *Full Quota IndexedDB* | Bộ lưu trữ App chạy bằng ROM điện thoại đã đầy. Khuyên dùng: Thoát đa nhiệm trình duyệt để *Garbage Collector* chạy lúc Web Loading dọn dẹp các ảnh đã gửi đi khỏi bộ nhớ đệm thiết bị. |
+| **HTTP 401** | *Sai Token JWT* | Token hết hạn. Dữ liệu nháp dưới app sẽ bị niêm phong an toàn. Kỹ sư cần ra chỗ có mạng để Đăng nhập lại là App tự đồng bộ. |
+| **HTTP 403** | *Vượt Quyền (Forbidden)* | Kỹ sư cố gắng gọi API dành cho Trạm Trưởng. Bị chặn ở Middleware. |
+| **HTTP 408** | *Timeout / Request Too Large* | Do đường truyền quá yếu. Cần kiểm tra lại `quality` Canvas (Nên < 0.8) để Payload nhỏ lại. |
+| **SYNC_00** | *Fake Network Status* | Điện thoại bắt wifi không có Internet. Hệ thống sẽ tự đưa Queue vào trạng thái Sleep và Ping thăm dò lại sau 30 giây. |
+| **DB_01** | *Full Quota IndexedDB* | Bộ nhớ máy Kỹ sư đã đầy. Tắt đa nhiệm trình duyệt và mở lại để hệ thống quét rác (Garbage Collector) dọn bớt ảnh đã đồng bộ thành công. |
 
 ---
-*Bản quyền kiến trúc và giải pháp công nghệ thuộc về **Phạm Hoàng Phúc**.*
+*Bản quyền phân tích kiến trúc, giải pháp công nghệ và thiết kế luồng hệ thống thuộc về **Phạm Hoàng Phúc**.*
