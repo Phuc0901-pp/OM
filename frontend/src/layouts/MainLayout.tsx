@@ -1,14 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import PageTransition from '../components/common/PageTransition';
-
-import MaintenancePage from '../pages/public/MaintenancePage';
-import { useWebSocket } from '../hooks/useWebSocket';
 import type { LocalUser } from '../types/models';
-import api from '../services/api';
 import { useLocationStore } from '../stores/useLocationStore';
 
 const TITLE_MAP: Record<string, string> = {
@@ -69,47 +64,12 @@ const MainLayout = () => {
         return () => stopTracking();
     }, []);
 
-    // ── Maintenance Mode ─────────────────────────────────────────────────────
-    const { lastMessage } = useWebSocket();
-    const [maintenanceActive, setMaintenanceActive] = useState(false);
-    const [maintenanceMessage, setMaintenanceMessage] = useState<string | undefined>();
-    const isManager = user._roleName?.toLowerCase() === 'manager' || user._roleName?.toLowerCase() === 'admin';
 
-    useEffect(() => {
-        if (!lastMessage) return;
-        try {
-            const evt = typeof lastMessage === 'string' ? JSON.parse(lastMessage) : lastMessage;
-            // Notifications arrive as {type:'maintenance',active:bool} inside metadata or as a direct WS message
-            const meta = evt?.metadata ? (typeof evt.metadata === 'string' ? JSON.parse(evt.metadata) : evt.metadata) : evt;
-            if (meta?.type === 'maintenance') {
-                setMaintenanceActive(!!meta.active);
-                if (meta.active && evt.message) setMaintenanceMessage(evt.message);
-                if (!meta.active) setMaintenanceMessage(undefined);
-            }
-        } catch { /* ignore parse errors */ }
-    }, [lastMessage]);
 
-    // Fetch initial maintenance status on mount (handles page reload / fresh login)
-    useEffect(() => {
-        api.get('/admin/maintenance')
-            .then(res => {
-                if (res.data?.active) {
-                    setMaintenanceActive(true);
-                    if (res.data.message) setMaintenanceMessage(res.data.message);
-                }
-            })
-            .catch(() => { /* silently ignore – not critical */ });
-    }, []);
+
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900">
-            {/* Maintenance Mode Overlay (non-managers only) */}
-            {maintenanceActive && !isManager && (
-                <div className="fixed inset-0 z-[9999]">
-                    <MaintenancePage message={maintenanceMessage} />
-                </div>
-            )}
-
             {/* Sidebar */}
             <Sidebar
                 role={user?._roleName}
@@ -142,7 +102,7 @@ const MainLayout = () => {
                     </div>
                 </main>
 
-                
+
             </div>
         </div>
     );

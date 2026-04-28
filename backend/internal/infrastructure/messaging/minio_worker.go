@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mime"
 	"os"
@@ -144,7 +145,7 @@ func (w *MinioWorker) handleMessage(d amqp.Delivery) {
 
 	log.Printf("[MinioWorker] Processing upload.request: detail=%s file=%s", event.DetailAssignID, event.Filename)
 
-	if err := w.processUpload(event); err != nil {
+	if err := w.ProcessUpload(event); err != nil {
 		if strings.HasPrefix(err.Error(), "POISON_FILE_MISSING:") {
 			log.Printf("[MinioWorker] File permanently lost for detail=%s: %v — NACK (drop, no requeue)", event.DetailAssignID, err)
 			d.Nack(false, false) // Drop poison message
@@ -159,8 +160,8 @@ func (w *MinioWorker) handleMessage(d amqp.Delivery) {
 	d.Ack(false)
 }
 
-// processUpload streams the staged file to MinIO then forwards to Topic 2.
-func (w *MinioWorker) processUpload(event UploadRequestEvent) error {
+// ProcessUpload streams the staged file to MinIO then forwards to Topic 2.
+func (w *MinioWorker) ProcessUpload(event UploadRequestEvent) error {
 	// 1. Open staged temp file
 	f, err := os.Open(event.TempPath)
 	if err != nil {
@@ -203,6 +204,9 @@ func (w *MinioWorker) processUpload(event UploadRequestEvent) error {
 
 	log.Printf("[MinioWorker] Uploaded to MinIO: %s → %s", event.TempPath, minioURL)
 
+	// 2b. Dual-Write: Copy sang NAS (nếu NAS_STORAGE_DIR được cấu hình)
+	copyToNAS(event.TempPath, event.ObjectPath, event.Filename)
+
 	// 3. Delete temp file (best-effort — don't fail the pipeline if cleanup fails)
 	if removeErr := os.Remove(event.TempPath); removeErr != nil {
 		log.Printf("[MinioWorker] WARN: failed to clean up temp file %s: %v", event.TempPath, removeErr)
@@ -226,4 +230,58 @@ func (w *MinioWorker) processUpload(event UploadRequestEvent) error {
 	}
 
 	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NAS Dual-Write Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// copyToNAS copies the uploaded file from the temp staging area to the NAS
+// shared network drive, preserving the same directory tree as ObjectPath.
+//
+// Behaviour:
+//   - Does nothing if the NAS_STORAGE_DIR environment variable is not set.
+//   - On any error (permission denied, network unreachable…), logs a warning
+//     and returns silently so that the MinIO pipeline is never interrupted.
+func copyToNAS(tempPath, objectPath, filename string) {
+	nasRoot := os.Getenv("NAS_STORAGE_DIR")
+	if nasRoot == "" {
+		return // NAS not configured — skip silently
+	}
+
+	// Build full destination path: <NAS_STORAGE_DIR>/<objectPath>
+	// objectPath already contains the full relative tree, e.g.:
+	//   shundao-solar/2025/04-2025/template-a/hang-muc/panel-01/anh.jpg
+	destPath := filepath.Join(nasRoot, filepath.FromSlash(objectPath))
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		log.Printf("[NAS Dual-Write] WARN: cannot create dir for %s: %v", destPath, err)
+		return
+	}
+
+	if err := fileCopy(tempPath, destPath); err != nil {
+		log.Printf("[NAS Dual-Write] WARN: failed to copy %s → %s: %v", filename, destPath, err)
+		return
+	}
+
+	log.Printf("[NAS Dual-Write] OK: %s → %s", filename, destPath)
+}
+
+// fileCopy copies src file bytes to dst, creating dst if it does not exist.
+func fileCopy(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open src: %w", err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create dst: %w", err)
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy bytes: %w", err)
+	}
+	return out.Sync()
 }

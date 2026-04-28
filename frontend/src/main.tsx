@@ -15,18 +15,18 @@ import { defineCustomElements } from '@ionic/pwa-elements/loader';
 defineCustomElements(window);
 
 const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            refetchOnWindowFocus: false, // Customize as needed
-            retry: 1,
-        },
-    },
+ defaultOptions: {
+ queries: {
+ refetchOnWindowFocus: false, // Customize as needed
+ retry: 1,
+ },
+ },
 })
 
 createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-        <QueryClientProvider client={queryClient}>
-            <App />
-        </QueryClientProvider>
-    </StrictMode>,
+ <StrictMode>
+ <QueryClientProvider client={queryClient}>
+ <App />
+ </QueryClientProvider>
+ </StrictMode>,
 )

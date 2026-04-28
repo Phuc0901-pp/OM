@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
 	"github.com/phuc/cmms-backend/internal/config"
 	"github.com/phuc/cmms-backend/internal/core/services"
 	"github.com/phuc/cmms-backend/internal/domain"
@@ -36,7 +39,6 @@ type AssignHandler struct {
 	subWorkRepo      domain.SubWorkRepository
 	templateRepo     domain.TemplateRepository
 	hub              *websocket.Hub
-	notifSvc         *services.NotificationService
 	larkSvc          *services.LarkService
 	// Extracted services (Phase 1 refactor)
 	mediaSvc    *services.AllocationMediaService
@@ -56,7 +58,6 @@ func NewAssignHandler(
 	subWorkRepo domain.SubWorkRepository,
 	templateRepo domain.TemplateRepository,
 	hub *websocket.Hub,
-	notifSvc *services.NotificationService,
 	larkSvc *services.LarkService,
 	cfg config.Config,
 ) *AssignHandler {
@@ -65,7 +66,7 @@ func NewAssignHandler(
 	if hub != nil {
 		bFn = hub.BroadcastAll
 	}
-	workflowSvc := services.NewAllocationWorkflowService(db, detailAssignRepo, notifSvc, larkSvc, bFn, cfg)
+	workflowSvc := services.NewAllocationWorkflowService(db, detailAssignRepo, larkSvc, bFn, cfg)
 
 	// Best-effort: connect publisher (nil-safe if RABBITMQ_URL not set)
 	mqPub, mqErr := messaging.NewPublisher()
@@ -83,7 +84,6 @@ func NewAssignHandler(
 		subWorkRepo:      subWorkRepo,
 		templateRepo:     templateRepo,
 		hub:              hub,
-		notifSvc:         notifSvc,
 		larkSvc:          larkSvc,
 		mediaSvc:         mediaSvc,
 		workflowSvc:      workflowSvc,
@@ -96,6 +96,59 @@ func NewAssignHandler(
 // share it with the MinioWorker (Consumer 1) without opening a duplicate connection.
 func (h *AssignHandler) GetPublisher() *messaging.Publisher {
 	return h.mqPublisher
+}
+
+func (h *AssignHandler) provisionDeepFoldersForAssign(assignID uuid.UUID) {
+	details, err := h.detailAssignRepo.FindByAssignID(assignID)
+	if err != nil {
+		return
+	}
+
+	mc, err := storage.NewMinioClient()
+	if err != nil {
+		return
+	}
+
+	for _, d := range details {
+		ctxNames, err := h.detailAssignRepo.GetNamesForMinioPath(d.ID)
+		if err != nil || ctxNames == nil {
+			continue
+		}
+
+		now := time.Now()
+		var assign domain.Assign
+		if h.db.First(&assign, "id = ?", assignID).Error == nil && assign.StartTime != nil {
+			now = *assign.StartTime
+		}
+
+		yearStr := now.Format("2006")
+		monthYearStr := now.Format("01-2006")
+
+		path := fmt.Sprintf("%s/%s/%s/Attendance", ctxNames.ProjectName, yearStr, monthYearStr)
+		if ctxNames.ModelProjectName != "" {
+			path += "/" + ctxNames.ModelProjectName
+		}
+		if ctxNames.TemplateName != "" {
+			path += "/" + ctxNames.TemplateName
+		}
+		if ctxNames.WorkName != "" {
+			path += "/" + ctxNames.WorkName
+		}
+		if ctxNames.ParentAssetName != "" {
+			path += "/" + ctxNames.ParentAssetName
+		}
+		if ctxNames.AssetName != "" {
+			path += "/" + ctxNames.AssetName
+		}
+		if ctxNames.SubWorkName != "" {
+			path += "/" + ctxNames.SubWorkName
+		}
+
+		// Ensure MinIO accepts this empty file as a trick to provision folders
+		objectName := path + "/.system_keep"
+		emptyReader := bytes.NewReader([]byte{})
+		_, _ = mc.Client.PutObject(context.Background(), mc.Bucket, objectName, emptyReader, 0, minio.PutObjectOptions{})
+	}
 }
 
 // GET /assigns
@@ -137,7 +190,7 @@ func (h *AssignHandler) GetAssign(c *gin.Context) {
 	c.JSON(http.StatusOK, assign)
 }
 
-// GET /allocations/:id/tasks - used by NotificationDetailModal to load task data
+// GET /allocations/:id/tasks
 func (h *AssignHandler) GetAssignWithTasks(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -170,13 +223,39 @@ func (h *AssignHandler) GetAssignWithTasks(c *gin.Context) {
 		userNameStr = "Chưa chỉ định"
 	}
 	
-	// Inject assigned_user_names into each DetailAssign JSON
+	// Pre-fetch guide lines for all sub-works in this assign
+	var subWorkIDs []string
+	for _, detail := range assign.DetailAssigns {
+		if detail.Config != nil && detail.Config.SubWorkID != uuid.Nil {
+			subWorkIDs = append(subWorkIDs, detail.Config.SubWorkID.String())
+		}
+	}
+	
+	guideMap := make(map[string]bool)
+	if len(subWorkIDs) > 0 {
+		var guidelines []domain.GuideLine
+		h.db.Where("id_sub_work IN ?", subWorkIDs).Find(&guidelines)
+		for _, g := range guidelines {
+			if g.GuideText != "" || string(g.GuideImages) != "[]" || g.GuideURL != "" {
+				guideMap[g.SubWorkID.String()] = true
+			}
+		}
+	}
+	
+	// Inject assigned_user_names and has_guide into each DetailAssign JSON
 	var response []map[string]interface{}
 	for _, detail := range assign.DetailAssigns {
 		var detailMap map[string]interface{}
 		b, _ := json.Marshal(detail)
 		_ = json.Unmarshal(b, &detailMap)
 		detailMap["assigned_user_names"] = userNameStr
+		
+		if detail.Config != nil && detail.Config.SubWorkID != uuid.Nil {
+			detailMap["has_guide"] = guideMap[detail.Config.SubWorkID.String()]
+		} else {
+			detailMap["has_guide"] = false
+		}
+		
 		response = append(response, detailMap)
 	}
 
@@ -466,43 +545,10 @@ func (h *AssignHandler) CreateAssign(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusCreated, newAssign)
+	// Trigger background folder provisioning to NAS immediately
+	go h.provisionDeepFoldersForAssign(newAssign.ID)
 
-	// Notify each assigned user about the new work assignment
-	if h.notifSvc != nil && len(body.UserIDs) > 0 {
-		assignID := newAssign.ID
-		projectID2 := projectID
-		startTimeCopy := startTime
-		endTimeCopy := endTime
-		userIDsCopy := make([]string, len(body.UserIDs))
-		copy(userIDsCopy, body.UserIDs)
-		go func() {
-			var project domain.Project
-			if err := h.db.First(&project, "id = ?", projectID2).Error; err != nil {
-				log.Printf("[Notify] CreateAssign: failed to load project %s: %v", projectID2, err)
-				return
-			}
-			start := time.Now()
-			end := time.Now().Add(24 * time.Hour)
-			if startTimeCopy != nil {
-				start = *startTimeCopy
-			}
-			if endTimeCopy != nil {
-				end = *endTimeCopy
-			}
-			for _, uidStr := range userIDsCopy {
-				userID, err := uuid.Parse(uidStr)
-				if err != nil {
-					continue
-				}
-				var user domain.User
-				if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-					continue
-				}
-				h.notifSvc.NotifyAssignmentDetailed(&user, project.Name, "Phân bổ công việc", start, end, nil, assignID)
-			}
-		}()
-	}
+	c.JSON(http.StatusCreated, newAssign)
 
 	if h.hub != nil {
 		go h.hub.BroadcastAll([]byte(`{"event":"assign_created"}`))
@@ -662,7 +708,7 @@ func (h *AssignHandler) SubmitDetail(c *gin.Context) {
 		h.hub.BroadcastAll([]byte(`{"event":"task_updated"}`))
 	}
 
-	// Notify managers asynchronously
+	// Sync to Lark Base asynchronously on final submission
 	if !isDraft {
 		var submitterName string
 		if uidVal, ok := c.Get("user_id"); ok {
@@ -674,7 +720,8 @@ func (h *AssignHandler) SubmitDetail(c *gin.Context) {
 		if submitterName == "" {
 			submitterName = "Nhân sự"
 		}
-		h.workflowSvc.NotifySubmission(id, submitterName)
+		frontendURL := os.Getenv("FRONTEND_URL")
+		h.workflowSvc.PostSubmitAsync(id, submitterName, frontendURL)
 	}
 
 	c.JSON(http.StatusOK, detail)
@@ -943,6 +990,32 @@ syncPath:
 
 		log.Printf("[UploadDetailImage] Sync upload to MinIO: detail=%s url=%s", detailAssignID, url)
 
+		// Dual-Write: Copy sang NAS (nếu NAS_STORAGE_DIR được cấu hình)
+		if nasRoot := os.Getenv("NAS_STORAGE_DIR"); nasRoot != "" && syncObjPath != "" {
+			nasDestPath := filepath.Join(nasRoot, filepath.FromSlash(syncObjPath))
+			if mkErr := os.MkdirAll(filepath.Dir(nasDestPath), 0o755); mkErr != nil {
+				log.Printf("[NAS Dual-Write] WARN: cannot create dir for %s: %v", nasDestPath, mkErr)
+			} else if nasFile, openErr2 := fileHeader.Open(); openErr2 != nil {
+				log.Printf("[NAS Dual-Write] WARN: cannot re-open upload for NAS copy: %v", openErr2)
+			} else {
+				func() {
+					defer nasFile.Close()
+					dst, createErr := os.Create(nasDestPath)
+					if createErr != nil {
+						log.Printf("[NAS Dual-Write] WARN: cannot create NAS file %s: %v", nasDestPath, createErr)
+						return
+					}
+					defer dst.Close()
+					if _, copyErr := io.Copy(dst, nasFile); copyErr != nil {
+						log.Printf("[NAS Dual-Write] WARN: copy to NAS failed for %s: %v", nasDestPath, copyErr)
+						return
+					}
+					_ = dst.Sync()
+					log.Printf("[NAS Dual-Write] OK (sync): %s → %s", fileHeader.Filename, nasDestPath)
+				}()
+			}
+		}
+
 		// Write URL to Postgres directly via existing RabbitMQ consumer (if live)
 		if h.mqPublisher != nil {
 			dbEvent := messaging.ImageUploadedEvent{
@@ -1094,40 +1167,26 @@ func (h *AssignHandler) ApproveDetail(c *gin.Context) {
 		h.hub.BroadcastAll([]byte(`{"event":"task_updated"}`))
 	}
 
-	// Notify the engineer: công việc đã được duyệt
-	if h.notifSvc != nil {
-		detailCopy := *detail
-		go func() {
-			// Load the assign to find who submitted
-			var assign domain.Assign
-			if err := h.db.First(&assign, "id = ?", detailCopy.AssignID).Error; err != nil {
-				return
-			}
-			var userIDs []string
-			_ = json.Unmarshal(assign.UserIDs, &userIDs)
-			ctxNames, err := h.detailAssignRepo.GetNamesForMinioPath(detailCopy.ID)
-			if err != nil {
-				return
-			}
+	// Async: Lark sync
+	detailCopy := *detail
+	go func() {
+		// Load the assign to find who submitted
+		var assign domain.Assign
+		if err := h.db.First(&assign, "id = ?", detailCopy.AssignID).Error; err != nil {
+			return
+		}
+		var userIDs []string
+		_ = json.Unmarshal(assign.UserIDs, &userIDs)
+		ctxNames, err := h.detailAssignRepo.GetNamesForMinioPath(detailCopy.ID)
+		if err != nil {
+			return
+		}
 
-			// LARK SYNC
-			if body.FrontendURL != "" && h.larkSvc != nil {
-				h.syncCompletedTaskToLark(detailCopy, assign, userIDs, actorID, body.FrontendURL, ctxNames)
-			}
-			taskName := ctxNames.SubWorkName + " - " + ctxNames.AssetName
-			for _, uidStr := range userIDs {
-				userID, err := uuid.Parse(uidStr)
-				if err != nil {
-					continue
-				}
-				var user domain.User
-				if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-					continue
-				}
-				h.notifSvc.NotifyTaskStatusUpdate(&user, taskName, ctxNames.ProjectName, true, "", time.Now(), detailCopy.ID, detailCopy.AssignID, nil)
-			}
-		}()
-	}
+		// LARK SYNC
+		if body.FrontendURL != "" && h.larkSvc != nil {
+			h.syncCompletedTaskToLark(detailCopy, assign, userIDs, actorID, body.FrontendURL, ctxNames)
+		}
+	}()
 
 	c.JSON(http.StatusOK, detail)
 }
@@ -1185,41 +1244,25 @@ func (h *AssignHandler) RejectDetail(c *gin.Context) {
 		h.hub.BroadcastAll([]byte(`{"event":"task_updated"}`))
 	}
 
-	// Async: notify engineer + Lark sync
-	if h.notifSvc != nil {
-		detailCopy := *detail
-		reasonCopy := body.NoteReject
-		go func() {
-			var assign domain.Assign
-			if err := h.db.First(&assign, "id = ?", detailCopy.AssignID).Error; err != nil {
-				return
-			}
-			var userIDs []string
-			_ = json.Unmarshal(assign.UserIDs, &userIDs)
-			ctxNames, err := h.detailAssignRepo.GetNamesForMinioPath(detailCopy.ID)
-			if err != nil {
-				return
-			}
+	// Async: Lark sync
+	detailCopy := *detail
+	go func() {
+		var assign domain.Assign
+		if err := h.db.First(&assign, "id = ?", detailCopy.AssignID).Error; err != nil {
+			return
+		}
+		var userIDs []string
+		_ = json.Unmarshal(assign.UserIDs, &userIDs)
+		ctxNames, err := h.detailAssignRepo.GetNamesForMinioPath(detailCopy.ID)
+		if err != nil {
+			return
+		}
 
-			// LARK SYNC — push to "TỪ CHỐI TASK" table
-			if body.FrontendURL != "" && h.larkSvc != nil {
-				h.syncRejectedTaskToLark(detailCopy, assign, userIDs, actorID, body.FrontendURL, ctxNames)
-			}
-
-			taskName := ctxNames.SubWorkName + " - " + ctxNames.AssetName
-			for _, uidStr := range userIDs {
-				userID, err := uuid.Parse(uidStr)
-				if err != nil {
-					continue
-				}
-				var user domain.User
-				if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-					continue
-				}
-				h.notifSvc.NotifyTaskStatusUpdate(&user, taskName, ctxNames.ProjectName, false, reasonCopy, time.Now(), detailCopy.ID, detailCopy.AssignID, nil)
-			}
-		}()
-	}
+		// LARK SYNC — push to "TỪ CHỐI TASK" table
+		if body.FrontendURL != "" && h.larkSvc != nil {
+			h.syncRejectedTaskToLark(detailCopy, assign, userIDs, actorID, body.FrontendURL, ctxNames)
+		}
+	}()
 
 	c.JSON(http.StatusOK, detail)
 }
@@ -1560,10 +1603,13 @@ func (h *AssignHandler) syncCompletedTaskToLark(
 			"Work":                        ctxNames.WorkName,
 			"Sub - work":                  ctxNames.SubWorkName,
 			"Asset":                       ctxNames.AssetName,
-			"Đường dẫn": map[string]string{
+		}
+
+		if reportLink != "" {
+			fields["Đường dẫn"] = map[string]string{
 				"link": reportLink,
 				"text": "Xem Báo Cáo",
-			},
+			}
 		}
 
 		if submittedAt != "" {
@@ -1578,6 +1624,17 @@ func (h *AssignHandler) syncCompletedTaskToLark(
 			log.Printf("[Lark Sync] Failed to push complete task for %s: %v\n", assignee.Name, err)
 		} else {
 			log.Printf("[Lark Sync] Successfully pushed complete task to Lark for %s\n", assignee.Name)
+		}
+	}
+
+	// Also update the NỘP DỮ LIỆU Submit record for this assign
+	submitAppToken := os.Getenv("LARK_SUBMIT_APP_TOKEN")
+	submitTableID := os.Getenv("LARK_SUBMIT_TABLE_ID")
+	if submitAppToken != "" && submitTableID != "" && h.larkSvc != nil {
+		if err := h.larkSvc.UpdateSubmitRecord(submitAppToken, submitTableID, assign.ID.String(), ctxNames.SubWorkName, ctxNames.AssetName, ctxNames.ProcessName, approverName, approvalAt, true); err != nil {
+			log.Printf("[Lark Sync] UpdateSubmitRecord (approve) failed for assign %s: %v\n", assign.ID, err)
+		} else {
+			log.Printf("[Lark Sync] UpdateSubmitRecord (approve) succeeded for assign %s\n", assign.ID)
 		}
 	}
 }
@@ -1644,10 +1701,13 @@ func (h *AssignHandler) syncRejectedTaskToLark(
 			"Work":                        ctxNames.WorkName,
 			"Sub - work":                  ctxNames.SubWorkName,
 			"Asset":                       ctxNames.AssetName,
-			"Đường dẫn": map[string]string{
+		}
+
+		if reportLink != "" {
+			fields["Đường dẫn"] = map[string]string{
 				"link": reportLink,
 				"text": "Xem Báo Cáo",
-			},
+			}
 		}
 		if submittedAt != "" {
 			fields["Thời gian Nhân sự nộp"] = submittedAt
@@ -1659,6 +1719,17 @@ func (h *AssignHandler) syncRejectedTaskToLark(
 			log.Printf("[Lark Sync/Reject] Failed to push rejected task for %s: %v\n", assignee.Name, err)
 		} else {
 			log.Printf("[Lark Sync/Reject] Successfully pushed rejected task to Lark for %s\n", assignee.Name)
+		}
+	}
+
+	// Also update the NỘP DỮ LIỆU Submit record for this assign
+	submitAppToken := os.Getenv("LARK_SUBMIT_APP_TOKEN")
+	submitTableID := os.Getenv("LARK_SUBMIT_TABLE_ID")
+	if submitAppToken != "" && submitTableID != "" && h.larkSvc != nil {
+		if err := h.larkSvc.UpdateSubmitRecord(submitAppToken, submitTableID, assign.ID.String(), ctxNames.SubWorkName, ctxNames.AssetName, ctxNames.ProcessName, rejectorName, rejectedAt, false); err != nil {
+			log.Printf("[Lark Sync/Reject] UpdateSubmitRecord failed for assign %s: %v\n", assign.ID, err)
+		} else {
+			log.Printf("[Lark Sync/Reject] UpdateSubmitRecord succeeded for assign %s\n", assign.ID)
 		}
 	}
 }

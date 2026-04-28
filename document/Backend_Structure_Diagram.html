@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Raitek Backend Structure</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 10px 20px; color: #334155; line-height: 1.2; font-size: 10px; margin: 0; }
+        ul { list-style-type: none; padding-left: 14px; border-left: 1px solid #cbd5e1; margin-top: 2px; margin-bottom: 2px;}
+        li { margin: 2px 0; position: relative; }
+        li::before { content: ''; position: absolute; top: 7px; left: -14px; width: 10px; height: 1px; border-top: 1px solid #cbd5e1; }
+        
+        /* Light mode cho mượt mắt */
+        .masonry { column-count: 5; column-gap: 15px; zoom: 0.85; }
+        .card { background: white; padding: 8px 10px; border-radius: 6px; box-shadow: 0 1px 3px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; break-inside: avoid; page-break-inside: avoid; display: inline-block; width: 100%; box-sizing: border-box; margin-bottom: 15px; }
+        
+        .card.split-card > ul { column-count: 2; column-gap: 10px; }
+        
+        .card > ul { border-left: 0; padding-left: 0; }
+        .card > ul > li::before { display: none; }
+        
+        .item { display: flex; align-items: flex-start; padding: 0px 0px; border-radius: 4px; font-weight: 500;}
+        .item:hover .file-name { font-weight: 600; color: #2563eb; cursor: default;}
+        .icon { font-size: 12px; margin-right: 4px; width: 14px; text-align: center; flex-shrink: 0; margin-top: 0px; }
+        
+        .item-content { display: flex; flex-direction: column; width: 100%;}
+        .file-name { font-weight: 400; color: #0f172a; font-size: 11.5px; transition: color 0.1s; letter-spacing: -0.2px;}
+        .desc { font-family: 'Roboto Mono', 'Consolas', monospace; font-size: 9.5px; color: #d97706; margin-top: 1px; font-style: italic; background-color: #fef3c7; padding: 0px 4px; border-radius: 3px; border-left: 2px solid #f59e0b; display: inline-block; width: fit-content; word-wrap: break-word; letter-spacing: -0.3px;}
+        
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center; margin-bottom: 15px; margin-top: 5px; font-size: 18px; color: #0f172a; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Raitek O&M Server-Side Anatomy (Clean Architecture)</h2>
+    <div class="masonry">
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">BACKEND / cmd</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">api</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">main.go</span><span class="desc">// Điểm Nổ (Bootstrap): Nạp Env, Nối DB, Kích Router</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">migrate</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">add_project_to_attendance.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">test_api</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">main.go</span><span class="desc">// Điểm Nổ (Bootstrap): Nạp Env, Nối DB, Kích Router</span></div></div></li>
+</ul></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">BACKEND / data</span></div></div><ul>
+<li><div class="item"><span class="icon">📄</span><div class="item-content"><span class="file-name">cmms.db</span><span class="desc">// Khớp Nối Database: Pool Connections Psql</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">BACKEND / docs</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">docs.go</span></div></div></li>
+<li><div class="item"><span class="icon">📄</span><div class="item-content"><span class="file-name">swagger.json</span></div></div></li>
+<li><div class="item"><span class="icon">🐋</span><div class="item-content"><span class="file-name">swagger.yaml</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">BACKEND / migrations</span></div></div><ul>
+<li><div class="item"><span class="icon">🛢️</span><div class="item-content"><span class="file-name">000001_init_schema.down.sql</span></div></div></li>
+<li><div class="item"><span class="icon">🛢️</span><div class="item-content"><span class="file-name">000001_init_schema.up.sql</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">BACKEND / scratch</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">check_db.go</span><span class="desc">// Khớp Nối Database: Pool Connections Psql</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">check_users.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">debug_project.go</span></div></div></li>
+<li><div class="item"><span class="icon">📄</span><div class="item-content"><span class="file-name">out.json</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_api.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_db.go</span><span class="desc">// Khớp Nối Database: Pool Connections Psql</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_delete.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_process.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_reports_db.go</span><span class="desc">// Khớp Nối Database: Pool Connections Psql</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_users_api.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">test_users_api2.go</span></div></div></li>
+</ul></div>
+<div class="card split-card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / adapters</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">http</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">handlers</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">admin_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">asset_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">attendance_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">auth_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">config_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">lark_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">media_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">project_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">report_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">role_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">station_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">stats_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">team_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">template_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">upload_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">user_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">middleware</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">auth_middleware.go</span><span class="desc">// Hải Quan Xét Hỏi: Chặn kiểm định JWT, phân chia Role</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">error_handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">rate_limiter.go</span></div></div></li>
+</ul></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">storage</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">postgres</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">asset_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">attendance_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">config_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">owner_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">project_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">report_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">role_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">station_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">stats_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">team_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">template_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">user_repository.go</span><span class="desc">// Thợ Đào Mỏ CSDL: Chọi Raw SQL/GORM thẳng xuống Postgres</span></div></div></li>
+</ul></li>
+</ul></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / config</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">config.go</span><span class="desc">// Dây Truyền Năng Lượng: Đọc .env dội vào System</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / core</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">errors</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">errors.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">response</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">response.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">services</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation_media_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation_workflow_service.go</span><span class="desc">// Hệ Thần Kinh Giao Việc: Kích hoạt luồng Async khi Duyệt/Từ chối</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation_workflow_service_test.go</span><span class="desc">// Hệ Thần Kinh Giao Việc: Kích hoạt luồng Async khi Duyệt/Từ chối</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">assignment_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">attendance_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">auth_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">email_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">evidence_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">lark_service.go</span><span class="desc">// Sứ Gỉa Bitable: Đẩy Report Tự Động lên Lark</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">project_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">reminder_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">report_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">stats_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">user_service.go</span><span class="desc">// Lõi Nghiệp Vụ (Core Logic): Não bộ xử lý tính toán</span></div></div></li>
+</ul></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / di</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">container.go</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / domain</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">dtos</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">auth_dto.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">allocation.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">attendance.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">auth.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">project.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">report.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">station.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">stats.go</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / infrastructure</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">messaging</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">consumer.go</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">minio_worker.go</span><span class="desc">// Cảng Giao Cắt S3: Ném file Blob tĩnh sang MinIO</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">minio_worker_test.go</span><span class="desc">// Cảng Giao Cắt S3: Ném file Blob tĩnh sang MinIO</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">publisher.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">storage</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">minio.go</span><span class="desc">// Cảng Giao Cắt S3: Ném file Blob tĩnh sang MinIO</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">websocket</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">handler.go</span><span class="desc">// Bốt Giao Thông API: Chặn bắt, Validate Request HTTP</span></div></div></li>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">hub.go</span></div></div></li>
+</ul></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / platform</span></div></div><ul>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">database</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">postgres.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">logger</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">logger.go</span></div></div></li>
+</ul></li>
+<li><div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-weight: 600; color: #475569;">migrations</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">runner.go</span></div></div></li>
+</ul></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">🧅</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #059669; text-transform: uppercase;">INTERNAL / utils</span></div></div><ul>
+<li><div class="item"><span class="icon"><span style="color: #0284c7;">🐹</span></span><div class="item-content"><span class="file-name">slugify.go</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">Build & Devops</span></div></div><ul>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">.env</span><span class="desc">// Ổ Khóa Mật (Biến môi trường Server)</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">.env.example</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">Dockerfile</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">OM_Offline_Package.tar.gz</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">api.exe</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">go.mod</span><span class="desc">// Hộ khẩu thư viện Golang</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">go.sum</span><span class="desc">// Hộ khẩu thư viện Golang</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">main</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">main.exe</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">run_dev.bat</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">test.exe</span></div></div></li>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">tmp_bin</span></div></div></li>
+</ul></div>
+</div></body></html>

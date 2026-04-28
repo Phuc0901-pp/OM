@@ -1,11 +1,13 @@
 package websocket
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/phuc/cmms-backend/internal/domain"
 	"github.com/phuc/cmms-backend/internal/platform/logger"
 )
 
@@ -27,16 +29,18 @@ type Client struct {
 // Hub maintains the set of active clients and broadcasts messages to them.
 // It is safe for concurrent use from multiple goroutines.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[uuid.UUID][]*Client // One user can have multiple tabs open
-	log     *zap.Logger
+	mu       sync.RWMutex
+	clients  map[uuid.UUID][]*Client // One user can have multiple tabs open
+	log      *zap.Logger
+	userRepo domain.UserRepository   // Used to sync status_user in DB
 }
 
 // NewHub creates and returns a new Hub.
-func NewHub() *Hub {
+func NewHub(userRepo domain.UserRepository) *Hub {
 	return &Hub{
-		clients: make(map[uuid.UUID][]*Client),
-		log:     logger.Get(),
+		clients:  make(map[uuid.UUID][]*Client),
+		log:      logger.Get(),
+		userRepo: userRepo,
 	}
 }
 
@@ -59,11 +63,34 @@ func (h *Hub) Register(c *Client) {
 		)
 	}
 
+	isFirstConn := len(h.clients[c.UserID]) == 0
 	h.clients[c.UserID] = append(h.clients[c.UserID], c)
 	h.log.Info("[WS Hub] Client connected",
 		zap.String("user_id", c.UserID.String()),
 		zap.Int("total_conns", len(h.clients[c.UserID])),
 	)
+
+	// Set status_user = 1 only when this is the first tab connecting
+	if isFirstConn && h.userRepo != nil {
+		if err := h.userRepo.UpdateStatus(c.UserID, 1); err != nil {
+			h.log.Warn("[WS Hub] Failed to set user online",
+				zap.String("user_id", c.UserID.String()),
+				zap.Error(err),
+			)
+		} else {
+			// Broadcast the presence update to all connected clients
+			msgPayload := map[string]interface{}{
+				"type": "user_status_changed",
+				"data": map[string]interface{}{
+					"user_id": c.UserID.String(),
+					"status":  1,
+				},
+			}
+			if msgBytes, err := json.Marshal(msgPayload); err == nil {
+				go h.BroadcastAll(msgBytes)
+			}
+		}
+	}
 }
 
 // Unregister removes a client from the Hub and closes its send channel.
@@ -79,7 +106,8 @@ func (h *Hub) Unregister(c *Client) {
 		}
 	}
 
-	if len(newClients) == 0 {
+	isLastConn := len(newClients) == 0
+	if isLastConn {
 		delete(h.clients, c.UserID)
 	} else {
 		h.clients[c.UserID] = newClients
@@ -88,7 +116,30 @@ func (h *Hub) Unregister(c *Client) {
 	safeClose(c.Send)
 	h.log.Info("[WS Hub] Client disconnected",
 		zap.String("user_id", c.UserID.String()),
+		zap.Int("remaining_conns", len(newClients)),
 	)
+
+	// Set status_user = 0 only when the LAST tab/connection is gone
+	if isLastConn && h.userRepo != nil {
+		if err := h.userRepo.UpdateStatus(c.UserID, 0); err != nil {
+			h.log.Warn("[WS Hub] Failed to set user offline",
+				zap.String("user_id", c.UserID.String()),
+				zap.Error(err),
+			)
+		} else {
+			// Broadcast the presence update to all connected clients
+			msgPayload := map[string]interface{}{
+				"type": "user_status_changed",
+				"data": map[string]interface{}{
+					"user_id": c.UserID.String(),
+					"status":  0,
+				},
+			}
+			if msgBytes, err := json.Marshal(msgPayload); err == nil {
+				go h.BroadcastAll(msgBytes)
+			}
+		}
+	}
 }
 
 // SendToUser pushes a raw JSON message to all active connections for a given user.

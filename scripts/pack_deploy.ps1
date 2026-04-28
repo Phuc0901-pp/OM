@@ -5,7 +5,7 @@ Script đóng gói toàn bộ Docker Images của dự án Solar O&M phục vụ
 .DESCRIPTION
 Quy trình chuẩn:
 - Build Images backend + frontend cục bộ trên Windows.
-- Xuất file om_images.tar (backend, frontend, postgres:15-alpine, minio/minio)
+- Xuất file om_images.tar (backend, frontend, postgres:15-alpine, minio/minio:latest, rabbitmq:3-management-alpine)
 - Đóng gói toàn bộ OM_Offline_Deployment thành OM_Offline_Package.tar.gz
 #>
 
@@ -31,13 +31,18 @@ Write-Host "`n[1/3] Dang Build Images (Golang & React)..." -ForegroundColor Yell
 docker build -t raitek/om-backend:latest -f backend/Dockerfile backend/
 docker build -t raitek/om-frontend:latest -f frontend/Dockerfile frontend/
 
-# 4. Save TẤT CẢ images vào 1 file .tar (backend, frontend, postgres, minio)
-Write-Host "`n[2/3] Dang xuat file om_images.tar (backend + frontend + postgres + minio)..." -ForegroundColor Yellow
+# 4. Pull & Save TẤT CẢ images vào 1 file .tar
+Write-Host "`n[2/3] Dang pull cac images external..." -ForegroundColor Yellow
+docker pull postgres:15-alpine
+docker pull minio/minio:latest
+docker pull rabbitmq:3-management-alpine
+
+Write-Host "`n[3/4] Dang xuat file om_images.tar (backend + frontend + postgres + minio + rabbitmq)..." -ForegroundColor Yellow
 $TarPath = Join-Path $OutputDir "om_images.tar"
-docker save raitek/om-backend:latest raitek/om-frontend:latest postgres:15-alpine minio/minio:latest -o $TarPath
+docker save raitek/om-backend:latest raitek/om-frontend:latest postgres:15-alpine minio/minio:latest rabbitmq:3-management-alpine -o $TarPath
 
 # 5. Sắp xếp file cấu hình
-Write-Host "`n[3/3] Bo tri file Cau hinh, Script & Docker Compose..." -ForegroundColor Yellow
+Write-Host "`n[4/4] Bo tri file Cau hinh, Script & Docker Compose..." -ForegroundColor Yellow
 Copy-Item "deploy\docker-compose.offline.yml" -Destination (Join-Path $OutputDir "deployments\docker-compose.yml")
 Copy-Item "deploy\.env.example" -Destination (Join-Path $OutputDir "configs\.env.example")
 Copy-Item "scripts\auto_start.sh" -Destination $OutputDir

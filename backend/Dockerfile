@@ -32,6 +32,9 @@ COPY --from=builder /app/main .
 # Copy migrations folder (for runtime migrations if supported)
 COPY --from=builder /app/migrations ./migrations
 
+# Copy assets folder (fonts, templates, etc.)
+COPY --from=builder /app/assets ./assets
+
 # Expose backend port
 EXPOSE 4000
 

@@ -3,6 +3,7 @@
 -- =======================================================================
 
 -- Drop Tables in reverse dependency order
+DROP TABLE IF EXISTS guidelines CASCADE;
 DROP TABLE IF EXISTS reports CASCADE;
 DROP TABLE IF EXISTS detail_assigns CASCADE;
 DROP TABLE IF EXISTS assigns CASCADE;

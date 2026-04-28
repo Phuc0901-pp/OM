@@ -31,8 +31,8 @@ interface CameraModalProps {
 
 interface CapturedItem {
     id: string;
-    data: Blob;          // Always Blob — memory-efficient, no Base64 / double-encode
-    objectUrl: string;   // Revocable display URL created from data Blob
+    data: Blob; // Always Blob — memory-efficient, no Base64 / double-encode
+    objectUrl: string; // Revocable display URL created from data Blob
     type: 'photo' | 'video';
     selected: boolean;
 }
@@ -86,9 +86,9 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
 
     // ── GPS from global store (pre-fetched, zero latency) ─────────────────────
     const gpsStore = useLocationStore();
-    const gpsLocation = selectCoordString(gpsStore);  // "lat, lng" string or null
-    const storeMapImg = gpsStore.mapImage;             // already loaded HTMLImageElement
-    const storeAddress = gpsStore.address;             // already reverse-geocoded string
+    const gpsLocation = selectCoordString(gpsStore); // "lat, lng" string or null
+    const storeMapImg = gpsStore.mapImage; // already loaded HTMLImageElement
+    const storeAddress = gpsStore.address; // already reverse-geocoded string
 
     // Flash state
     const [isFlashOn, setIsFlashOn] = useState(false);
@@ -110,11 +110,11 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * stopStream (V18)
-     * Full video-pipeline reset: pause → null srcObject → load()
-     * The extra .load() call forces mobile WebView to discard its decode pipeline,
-     * preventing the black-screen freeze that appears when srcObject is merely nulled.
-     */
+    * stopStream (V18)
+    * Full video-pipeline reset: pause → null srcObject → load()
+    * The extra .load() call forces mobile WebView to discard its decode pipeline,
+    * preventing the black-screen freeze that appears when srcObject is merely nulled.
+    */
     const stopStream = () => {
         if (videoRef.current) {
             videoRef.current.pause();
@@ -134,15 +134,15 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
     };
 
     /**
-     * getTargetDeviceId (V18)
-     * Match a camera by label keywords — safe, no index guessing.
-     * Camera ordering varies wildly across manufacturers:
-     *   iPhone  → [wide, ultra, tele, FRONT]   (front is last)
-     *   Xiaomi  → [FRONT, back, macro, depth]  (front is first)
-     *   Samsung → [back, FRONT, ultra, tele]   (mixed)
-     * Using label keywords is the only reliable cross-device strategy.
-     * Falls back to undefined so the caller can use facingMode.
-     */
+    * getTargetDeviceId (V18)
+    * Match a camera by label keywords — safe, no index guessing.
+    * Camera ordering varies wildly across manufacturers:
+    * iPhone → [wide, ultra, tele, FRONT] (front is last)
+    * Xiaomi → [FRONT, back, macro, depth] (front is first)
+    * Samsung → [back, FRONT, ultra, tele] (mixed)
+    * Using label keywords is the only reliable cross-device strategy.
+    * Falls back to undefined so the caller can use facingMode.
+    */
     const getTargetDeviceId = (wantFront: boolean, devices: MediaDeviceInfo[]): string | undefined => {
         const frontKw = ['front', 'user', 'trước', 'selfie', 'face'];
         const rearKw = ['back', 'rear', 'environment', 'sau', 'main', 'wide'];
@@ -157,15 +157,15 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
     };
 
     /**
-     * startStream (V18)
-     * Priority order:
-     *   1. exact deviceId from label-matched list (most reliable)
-     *   2. ideal facingMode (browser picks best match, no exceptions)
-     *   3. bare video request (last resort)
-     * Uses ideal (NOT exact) for facingMode because:
-     *   - `exact` throws OverconstrainedError on Safari
-     *   - `exact` is silently ignored on many Android Chrome builds
-     */
+    * startStream (V18)
+    * Priority order:
+    * 1. exact deviceId from label-matched list (most reliable)
+    * 2. ideal facingMode (browser picks best match, no exceptions)
+    * 3. bare video request (last resort)
+    * Uses ideal (NOT exact) for facingMode because:
+    * - `exact` throws OverconstrainedError on Safari
+    * - `exact` is silently ignored on many Android Chrome builds
+    */
     const startStream = async (wantFront: boolean, retryCount: number = 0): Promise<void> => {
         console.log(`[CAMERA_DEBUG] startStream(wantFront=${wantFront}, retry=${retryCount})`);
         stopStream();
@@ -261,9 +261,9 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
     };
 
     /**
-     * initCamera (V18)
-     * Entry point when modal opens. Starts rear camera then builds the device list.
-     */
+    * initCamera (V18)
+    * Entry point when modal opens. Starts rear camera then builds the device list.
+    */
     const initCamera = async () => {
         isFrontCameraRef.current = false;
         setIsFrontCamera(false);
@@ -271,10 +271,10 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
     };
 
     /**
-     * switchCamera (V18)
-     * Clean state flip → stopStream → startStream.
-     * No arbitrary 1200ms delay needed because stopStream now does a full pipeline flush.
-     */
+    * switchCamera (V18)
+    * Clean state flip → stopStream → startStream.
+    * No arbitrary 1200ms delay needed because stopStream now does a full pipeline flush.
+    */
     const switchCamera = async () => {
         if (cameraCount < 2) {
             setFlashMsg('Thiết bị chỉ có 1 camera');
@@ -830,10 +830,10 @@ const CameraModal: React.FC<CameraModalProps> = (props) => {
                     />
 
                     {/* Live Watermark Overlay — mirrors actual canvas watermark layout 1:1.
-                        WHOLE-FRAME ROTATION: a single wrapper swaps width/height for landscape
-                        mode and rotates 90°, so all watermark elements stay in their correct
-                        corners (logo top-left, info bottom-left, map bottom-right) regardless
-                        of physical device orientation. */}
+ WHOLE-FRAME ROTATION: a single wrapper swaps width/height for landscape
+ mode and rotates 90°, so all watermark elements stay in their correct
+ corners (logo top-left, info bottom-left, map bottom-right) regardless
+ of physical device orientation. */}
                     {!previewItem && containerSize.width > 0 && (() => {
                         const isLandscape = rotationAngle === 90 || rotationAngle === -90 || rotationAngle === 270 || rotationAngle === -270;
                         return (

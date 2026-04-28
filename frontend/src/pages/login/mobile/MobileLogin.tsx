@@ -175,7 +175,7 @@ const MobileLogin = () => {
             {/* Bottom Info */}
             <div className="relative z-10 p-6 text-xs text-slate-500 font-bold tracking-widest uppercase flex justify-between items-center w-full">
                 <span>2026 Raitek O&M</span>
-                <span>Version 6.4.2</span>
+                <span>Version 6.5.0</span>
             </div>
 
             {/* Support Modal Overlay */}

@@ -5,407 +5,407 @@
  */
 
 import {
-    PendingCapture,
-    CaptureStatus,
-    OfflineStorageState,
-    OfflineStorageConfig,
-    DEFAULT_OFFLINE_CONFIG,
-    DB_NAME,
-    DB_VERSION,
-    STORE_PENDING_CAPTURES
+ PendingCapture,
+ CaptureStatus,
+ OfflineStorageState,
+ OfflineStorageConfig,
+ DEFAULT_OFFLINE_CONFIG,
+ DB_NAME,
+ DB_VERSION,
+ STORE_PENDING_CAPTURES
 } from './types';
 
 class OfflineStorageService {
-    private db: IDBDatabase | null = null;
-    private config: OfflineStorageConfig;
-    private initialized: boolean = false;
+ private db: IDBDatabase | null = null;
+ private config: OfflineStorageConfig;
+ private initialized: boolean = false;
 
-    constructor(config: Partial<OfflineStorageConfig> = {}) {
-        this.config = { ...DEFAULT_OFFLINE_CONFIG, ...config };
-    }
+ constructor(config: Partial<OfflineStorageConfig> = {}) {
+ this.config = { ...DEFAULT_OFFLINE_CONFIG, ...config };
+ }
 
-    /**
-     * Initialize the IndexedDB database
-     */
-    async init(): Promise<void> {
-        if (this.initialized && this.db) {
-            return;
-        }
+ /**
+ * Initialize the IndexedDB database
+ */
+ async init(): Promise<void> {
+ if (this.initialized && this.db) {
+ return;
+ }
 
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
+ return new Promise((resolve, reject) => {
+ const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-            request.onerror = () => {
-                console.error('[OfflineStorage] Failed to open database:', request.error);
-                reject(new Error('Failed to open offline storage database'));
-            };
+ request.onerror = () => {
+ console.error('[OfflineStorage] Failed to open database:', request.error);
+ reject(new Error('Failed to open offline storage database'));
+ };
 
-            request.onsuccess = () => {
-                this.db = request.result;
-                this.initialized = true;
-                console.log('[OfflineStorage] Database initialized');
-                resolve();
-            };
+ request.onsuccess = () => {
+ this.db = request.result;
+ this.initialized = true;
+ console.log('[OfflineStorage] Database initialized');
+ resolve();
+ };
 
-            request.onupgradeneeded = (event) => {
-                const db = (event.target as IDBOpenDBRequest).result;
+ request.onupgradeneeded = (event) => {
+ const db = (event.target as IDBOpenDBRequest).result;
 
-                // Create pending_captures store
-                if (!db.objectStoreNames.contains(STORE_PENDING_CAPTURES)) {
-                    const store = db.createObjectStore(STORE_PENDING_CAPTURES, { keyPath: 'id' });
+ // Create pending_captures store
+ if (!db.objectStoreNames.contains(STORE_PENDING_CAPTURES)) {
+ const store = db.createObjectStore(STORE_PENDING_CAPTURES, { keyPath: 'id' });
 
-                    // Create indexes for efficient querying
-                    store.createIndex('taskId', 'taskId', { unique: false });
-                    store.createIndex('status', 'status', { unique: false });
-                    store.createIndex('timestamp', 'timestamp', { unique: false });
-                    store.createIndex('assignId', 'assignId', { unique: false });
+ // Create indexes for efficient querying
+ store.createIndex('taskId', 'taskId', { unique: false });
+ store.createIndex('status', 'status', { unique: false });
+ store.createIndex('timestamp', 'timestamp', { unique: false });
+ store.createIndex('assignId', 'assignId', { unique: false });
 
-                    console.log('[OfflineStorage] Created object store and indexes');
-                }
-            };
-        });
-    }
+ console.log('[OfflineStorage] Created object store and indexes');
+ }
+ };
+ });
+ }
 
-    /**
-     * Ensure database is initialized before operations
-     */
-    private async ensureInitialized(): Promise<IDBDatabase> {
-        if (!this.initialized || !this.db) {
-            await this.init();
-        }
-        if (!this.db) {
-            throw new Error('Database not initialized');
-        }
-        return this.db;
-    }
+ /**
+ * Ensure database is initialized before operations
+ */
+ private async ensureInitialized(): Promise<IDBDatabase> {
+ if (!this.initialized || !this.db) {
+ await this.init();
+ }
+ if (!this.db) {
+ throw new Error('Database not initialized');
+ }
+ return this.db;
+ }
 
-    /**
-     * Generate a UUID for new captures
-     */
-    private generateId(): string {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = (Math.random() * 16) | 0;
-            const v = c === 'x' ? r : (r & 0x3) | 0x8;
-            return v.toString(16);
-        });
-    }
+ /**
+ * Generate a UUID for new captures
+ */
+ private generateId(): string {
+ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+ const r = (Math.random() * 16) | 0;
+ const v = c === 'x' ? r : (r & 0x3) | 0x8;
+ return v.toString(16);
+ });
+ }
 
-    /**
-     * Save a new capture to offline storage
-     */
-    async saveCapture(
-        taskId: string,
-        assignId: string,
-        imageBlob: Blob,
-        stage: string = 'after'
-    ): Promise<string> {
-        const db = await this.ensureInitialized();
+ /**
+ * Save a new capture to offline storage
+ */
+ async saveCapture(
+ taskId: string,
+ assignId: string,
+ imageBlob: Blob,
+ stage: string = 'after'
+ ): Promise<string> {
+ const db = await this.ensureInitialized();
 
-        // Check storage limits
-        const state = await this.getStorageState();
-        if (state.pendingCount >= this.config.maxPendingCaptures) {
-            throw new Error('Đã đạt giới hạn số lượng ảnh chờ đồng bộ');
-        }
-        if (state.totalSize + imageBlob.size > this.config.maxStorageSize) {
-            throw new Error('Đã đạt giới hạn dung lượng lưu trữ offline');
-        }
+ // Check storage limits
+ const state = await this.getStorageState();
+ if (state.pendingCount >= this.config.maxPendingCaptures) {
+ throw new Error('Đã đạt giới hạn số lượng ảnh chờ đồng bộ');
+ }
+ if (state.totalSize + imageBlob.size > this.config.maxStorageSize) {
+ throw new Error('Đã đạt giới hạn dung lượng lưu trữ offline');
+ }
 
-        const captureId = this.generateId();
-        const ext = imageBlob.type?.includes('video') ? 'webm' : 'jpg';
-        const capture: PendingCapture = {
-            id: captureId,
-            taskId,
-            assignId,
-            imageBlob,
-            mimeType: imageBlob.type || 'image/jpeg',
-            // Use capture.id as filename base so retries always produce the SAME MinIO path (idempotent)
-            filename: `${captureId}.${ext}`,
-            timestamp: Date.now(),
-            status: 'pending',
-            retryCount: 0,
-            stage
-        };
+ const captureId = this.generateId();
+ const ext = imageBlob.type?.includes('video') ? 'webm' : 'jpg';
+ const capture: PendingCapture = {
+ id: captureId,
+ taskId,
+ assignId,
+ imageBlob,
+ mimeType: imageBlob.type || 'image/jpeg',
+ // Use capture.id as filename base so retries always produce the SAME MinIO path (idempotent)
+ filename: `${captureId}.${ext}`,
+ timestamp: Date.now(),
+ status: 'pending',
+ retryCount: 0,
+ stage
+ };
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.add(capture);
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.add(capture);
 
-            request.onsuccess = () => {
-                console.log('[OfflineStorage] Capture saved:', capture.id);
-                resolve(capture.id);
-            };
+ request.onsuccess = () => {
+ console.log('[OfflineStorage] Capture saved:', capture.id);
+ resolve(capture.id);
+ };
 
-            request.onerror = () => {
-                console.error('[OfflineStorage] Failed to save capture:', request.error);
-                reject(new Error('Failed to save capture to offline storage'));
-            };
-        });
-    }
+ request.onerror = () => {
+ console.error('[OfflineStorage] Failed to save capture:', request.error);
+ reject(new Error('Failed to save capture to offline storage'));
+ };
+ });
+ }
 
-    /**
-     * Get all captures for a specific task
-     */
-    async getCapturesByTask(taskId: string): Promise<PendingCapture[]> {
-        const db = await this.ensureInitialized();
+ /**
+ * Get all captures for a specific task
+ */
+ async getCapturesByTask(taskId: string): Promise<PendingCapture[]> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const index = store.index('taskId');
-            const request = index.getAll(taskId);
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const index = store.index('taskId');
+ const request = index.getAll(taskId);
 
-            request.onsuccess = () => {
-                resolve(request.result || []);
-            };
+ request.onsuccess = () => {
+ resolve(request.result || []);
+ };
 
-            request.onerror = () => {
-                console.error('[OfflineStorage] Failed to get captures:', request.error);
-                reject(new Error('Failed to get captures from offline storage'));
-            };
-        });
-    }
+ request.onerror = () => {
+ console.error('[OfflineStorage] Failed to get captures:', request.error);
+ reject(new Error('Failed to get captures from offline storage'));
+ };
+ });
+ }
 
-    /**
-     * Get all pending captures (status = 'pending')
-     */
-    async getPendingCaptures(): Promise<PendingCapture[]> {
-        const db = await this.ensureInitialized();
+ /**
+ * Get all pending captures (status = 'pending')
+ */
+ async getPendingCaptures(): Promise<PendingCapture[]> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const index = store.index('status');
-            const request = index.getAll('pending');
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const index = store.index('status');
+ const request = index.getAll('pending');
 
-            request.onsuccess = () => {
-                // Sort by timestamp (oldest first)
-                const captures = (request.result || []).sort((a, b) => a.timestamp - b.timestamp);
-                resolve(captures);
-            };
+ request.onsuccess = () => {
+ // Sort by timestamp (oldest first)
+ const captures = (request.result || []).sort((a, b) => a.timestamp - b.timestamp);
+ resolve(captures);
+ };
 
-            request.onerror = () => {
-                console.error('[OfflineStorage] Failed to get pending captures:', request.error);
-                reject(new Error('Failed to get pending captures'));
-            };
-        });
-    }
+ request.onerror = () => {
+ console.error('[OfflineStorage] Failed to get pending captures:', request.error);
+ reject(new Error('Failed to get pending captures'));
+ };
+ });
+ }
 
-    /**
-     * Get all failed captures
-     */
-    async getFailedCaptures(): Promise<PendingCapture[]> {
-        const db = await this.ensureInitialized();
+ /**
+ * Get all failed captures
+ */
+ async getFailedCaptures(): Promise<PendingCapture[]> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const index = store.index('status');
-            const request = index.getAll('failed');
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const index = store.index('status');
+ const request = index.getAll('failed');
 
-            request.onsuccess = () => {
-                resolve(request.result || []);
-            };
+ request.onsuccess = () => {
+ resolve(request.result || []);
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to get failed captures'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to get failed captures'));
+ };
+ });
+ }
 
-    /**
-     * Get a single capture by ID
-     */
-    async getCaptureById(id: string): Promise<PendingCapture | null> {
-        const db = await this.ensureInitialized();
+ /**
+ * Get a single capture by ID
+ */
+ async getCaptureById(id: string): Promise<PendingCapture | null> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.get(id);
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.get(id);
 
-            request.onsuccess = () => {
-                resolve(request.result || null);
-            };
+ request.onsuccess = () => {
+ resolve(request.result || null);
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to get capture'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to get capture'));
+ };
+ });
+ }
 
-    /**
-     * Update capture status
-     */
-    async updateCaptureStatus(
-        id: string,
-        status: CaptureStatus,
-        error?: string
-    ): Promise<void> {
-        const db = await this.ensureInitialized();
+ /**
+ * Update capture status
+ */
+ async updateCaptureStatus(
+ id: string,
+ status: CaptureStatus,
+ error?: string
+ ): Promise<void> {
+ const db = await this.ensureInitialized();
 
-        const capture = await this.getCaptureById(id);
-        if (!capture) {
-            throw new Error('Capture not found');
-        }
+ const capture = await this.getCaptureById(id);
+ if (!capture) {
+ throw new Error('Capture not found');
+ }
 
-        capture.status = status;
-        if (status === 'failed') {
-            capture.retryCount += 1;
-            capture.lastError = error;
-        }
+ capture.status = status;
+ if (status === 'failed') {
+ capture.retryCount += 1;
+ capture.lastError = error;
+ }
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.put(capture);
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.put(capture);
 
-            request.onsuccess = () => {
-                console.log(`[OfflineStorage] Capture ${id} status updated to ${status}`);
-                resolve();
-            };
+ request.onsuccess = () => {
+ console.log(`[OfflineStorage] Capture ${id} status updated to ${status}`);
+ resolve();
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to update capture status'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to update capture status'));
+ };
+ });
+ }
 
-    /**
-     * Delete a capture by ID
-     */
-    async deleteCapture(id: string): Promise<void> {
-        const db = await this.ensureInitialized();
+ /**
+ * Delete a capture by ID
+ */
+ async deleteCapture(id: string): Promise<void> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.delete(id);
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.delete(id);
 
-            request.onsuccess = () => {
-                console.log('[OfflineStorage] Capture deleted:', id);
-                resolve();
-            };
+ request.onsuccess = () => {
+ console.log('[OfflineStorage] Capture deleted:', id);
+ resolve();
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to delete capture'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to delete capture'));
+ };
+ });
+ }
 
-    /**
-     * Delete all captures for a specific task
-     */
-    async deleteCapturesByTask(taskId: string): Promise<void> {
-        const captures = await this.getCapturesByTask(taskId);
-        for (const capture of captures) {
-            await this.deleteCapture(capture.id);
-        }
-    }
+ /**
+ * Delete all captures for a specific task
+ */
+ async deleteCapturesByTask(taskId: string): Promise<void> {
+ const captures = await this.getCapturesByTask(taskId);
+ for (const capture of captures) {
+ await this.deleteCapture(capture.id);
+ }
+ }
 
-    /**
-     * Get current storage state/statistics
-     */
-    async getStorageState(): Promise<OfflineStorageState> {
-        const db = await this.ensureInitialized();
+ /**
+ * Get current storage state/statistics
+ */
+ async getStorageState(): Promise<OfflineStorageState> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.getAll();
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.getAll();
 
-            request.onsuccess = () => {
-                const captures = request.result || [];
+ request.onsuccess = () => {
+ const captures = request.result || [];
 
-                let totalSize = 0;
-                let pendingCount = 0;
-                let failedCount = 0;
+ let totalSize = 0;
+ let pendingCount = 0;
+ let failedCount = 0;
 
-                captures.forEach((capture: PendingCapture) => {
-                    totalSize += capture.imageBlob?.size || 0;
-                    if (capture.status === 'pending') pendingCount++;
-                    if (capture.status === 'failed') failedCount++;
-                });
+ captures.forEach((capture: PendingCapture) => {
+ totalSize += capture.imageBlob?.size || 0;
+ if (capture.status === 'pending') pendingCount++;
+ if (capture.status === 'failed') failedCount++;
+ });
 
-                resolve({
-                    pendingCount,
-                    totalSize,
-                    isSyncing: false, // This will be managed by SyncService
-                    failedCount,
-                    lastSyncAt: null
-                });
-            };
+ resolve({
+ pendingCount,
+ totalSize,
+ isSyncing: false, // This will be managed by SyncService
+ failedCount,
+ lastSyncAt: null
+ });
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to get storage state'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to get storage state'));
+ };
+ });
+ }
 
-    /**
-     * Cleanup old AND zombie captures:
-     * - "aged": created more than autoCleanupDays ago (default 7 days)
-     * - "zombie": status is 'failed' and retryCount >= maxRetries (give up)
-     */
-    async cleanupOldCaptures(maxRetries: number = 5): Promise<number> {
-        const db = await this.ensureInitialized();
-        const cutoffTime = Date.now() - (this.config.autoCleanupDays * 24 * 60 * 60 * 1000);
-        let deletedCount = 0;
+ /**
+ * Cleanup old AND zombie captures:
+ * - "aged": created more than autoCleanupDays ago (default 7 days)
+ * - "zombie": status is 'failed' and retryCount >= maxRetries (give up)
+ */
+ async cleanupOldCaptures(maxRetries: number = 5): Promise<number> {
+ const db = await this.ensureInitialized();
+ const cutoffTime = Date.now() - (this.config.autoCleanupDays * 24 * 60 * 60 * 1000);
+ let deletedCount = 0;
 
-        // Fetch ALL captures and filter in-memory (simpler than multi-index IDB queries)
-        const allCaptures = await new Promise<any[]>((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => reject(new Error('Failed to scan captures'));
-        });
+ // Fetch ALL captures and filter in-memory (simpler than multi-index IDB queries)
+ const allCaptures = await new Promise<any[]>((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readonly');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.getAll();
+ request.onsuccess = () => resolve(request.result || []);
+ request.onerror = () => reject(new Error('Failed to scan captures'));
+ });
 
-        const toDelete = allCaptures.filter(c => {
-            const isAged = c.timestamp < cutoffTime;
-            const isZombie = c.status === 'failed' && c.retryCount >= maxRetries;
-            return isAged || isZombie;
-        });
+ const toDelete = allCaptures.filter(c => {
+ const isAged = c.timestamp < cutoffTime;
+ const isZombie = c.status === 'failed' && c.retryCount >= maxRetries;
+ return isAged || isZombie;
+ });
 
-        for (const capture of toDelete) {
-            await this.deleteCapture(capture.id);
-            deletedCount++;
-        }
+ for (const capture of toDelete) {
+ await this.deleteCapture(capture.id);
+ deletedCount++;
+ }
 
-        if (deletedCount > 0) {
-            console.log(`[Offline GC] Cleaned up ${deletedCount} old/zombie captures (aged threshold: ${this.config.autoCleanupDays} days, max retries: ${maxRetries})`);
-        }
-        return deletedCount;
-    }
+ if (deletedCount > 0) {
+ console.log(`[Offline GC] Cleaned up ${deletedCount} old/zombie captures (aged threshold: ${this.config.autoCleanupDays} days, max retries: ${maxRetries})`);
+ }
+ return deletedCount;
+ }
 
-    /**
-     * Clear all data (for testing/reset)
-     */
-    async clearAll(): Promise<void> {
-        const db = await this.ensureInitialized();
+ /**
+ * Clear all data (for testing/reset)
+ */
+ async clearAll(): Promise<void> {
+ const db = await this.ensureInitialized();
 
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
-            const store = transaction.objectStore(STORE_PENDING_CAPTURES);
-            const request = store.clear();
+ return new Promise((resolve, reject) => {
+ const transaction = db.transaction([STORE_PENDING_CAPTURES], 'readwrite');
+ const store = transaction.objectStore(STORE_PENDING_CAPTURES);
+ const request = store.clear();
 
-            request.onsuccess = () => {
-                console.log('[OfflineStorage] All data cleared');
-                resolve();
-            };
+ request.onsuccess = () => {
+ console.log('[OfflineStorage] All data cleared');
+ resolve();
+ };
 
-            request.onerror = () => {
-                reject(new Error('Failed to clear storage'));
-            };
-        });
-    }
+ request.onerror = () => {
+ reject(new Error('Failed to clear storage'));
+ };
+ });
+ }
 
-    /**
-     * Check if IndexedDB is supported
-     */
-    static isSupported(): boolean {
-        return 'indexedDB' in window;
-    }
+ /**
+ * Check if IndexedDB is supported
+ */
+ static isSupported(): boolean {
+ return 'indexedDB' in window;
+ }
 }
 
 // Export singleton instance

@@ -37,21 +37,49 @@ func NewMediaHandler(minioClient *storage.MinioClient) *MediaHandler {
 // @Success      200  {array}   string
 // @Router       /media/library [get]
 func (h *MediaHandler) GetLibraryImages(c *gin.Context) {
-	// List all objects. You might want to filter by prefix like "library/" or rely on all objects.
-	// For now, listing everything or a specific folder if user requested.
-	// User just said "connect to minio to sync library".
-
-	// List all objects. Return raw keys so frontend can build folder structure.
-	// Presigned URLs expire and are too long for tree building.
-	// Frontend will request proxy/download using the key.
-
-	urls, err := h.MinioClient.ListObjectKeys("")
+	prefix := c.Query("prefix")
+	urls, err := h.MinioClient.ListObjectKeys(prefix)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list images"})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"data": urls})
+}
+
+// PublicGetLibraryImages returns images but requires a prefix to prevent full bucket scraping
+func (h *MediaHandler) PublicGetLibraryImages(c *gin.Context) {
+	prefix := c.Query("prefix")
+	filtersStr := c.Query("filters")
+	var filters []string
+	if filtersStr != "" {
+		filters = strings.Split(filtersStr, ",")
+	}
+	
+	if prefix == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Prefix is required for public access"})
+		return
+	}
+	urls, err := h.MinioClient.ListObjectKeys(prefix)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list images"})
+		return
+	}
+	
+	var filtered []string
+	for _, u := range urls {
+		match := true
+		for _, f := range filters {
+			if f != "" && !strings.Contains(u, f) {
+				match = false
+				break
+			}
+		}
+		if match {
+			filtered = append(filtered, u)
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"data": filtered})
 }
 
 // ProxyImage streams an image from MinIO via the backend

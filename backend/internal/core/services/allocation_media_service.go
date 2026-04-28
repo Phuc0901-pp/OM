@@ -162,6 +162,35 @@ func (s *AllocationMediaService) DeleteDetailFolder(detailAssignID uuid.UUID) (s
 	return prefix, count, err
 }
 
+// UploadReportPDF uploads a PDF file to the project's `reports` folder on MinIO.
+// Path format: <ProjectSlug>/<Year>/<Month-Year>/reports/<filename>.pdf
+// Returns the public URL of the uploaded PDF.
+func (s *AllocationMediaService) UploadReportPDF(projectSlug string, pdfBytes []byte, filename string) (string, error) {
+	mc, err := s.getMinioClient()
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now()
+	yearStr := now.Format("2006")
+	monthYearStr := now.Format("01-2006")
+
+	objectPath := fmt.Sprintf("%s/%s/%s/Reports/%s.pdf",
+		utils.SlugifyName(projectSlug),
+		yearStr,
+		monthYearStr,
+		filename,
+	)
+
+	url, err := mc.UploadBytes(pdfBytes, objectPath, "application/pdf")
+	if err != nil {
+		return "", fmt.Errorf("failed to upload report PDF to MinIO: %w", err)
+	}
+
+	fmt.Printf("[ReportPDF] Uploaded PDF: %s\n", objectPath)
+	return url, nil
+}
+
 // UploadNoteAsync uploads a note.txt file to MinIO in a background goroutine (non-blocking).
 // Errors are logged but do not affect the caller.
 func (s *AllocationMediaService) UploadNoteAsync(detailAssignID uuid.UUID, noteText string) {

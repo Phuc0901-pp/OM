@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/phuc/cmms-backend/internal/domain"
 	"github.com/phuc/cmms-backend/internal/platform/logger"
 	"go.uber.org/zap"
@@ -64,6 +65,11 @@ func (s *AuthService) Login(email, password string) (string, *domain.User, error
 		user.RoleName = domain.UserRole(user.RoleModel.Name)
 	}
 
+	// Mark user as online
+	if err := s.userRepo.UpdateStatus(user.ID, 1); err != nil {
+		logger.Get().Warn("Failed to update user status on login", zap.Error(err))
+	}
+
 	// Generate JWT
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID.String(),
@@ -79,6 +85,15 @@ func (s *AuthService) Login(email, password string) (string, *domain.User, error
 	}
 
 	return tokenString, user, nil
+}
+
+// Logout marks the user as offline (status_user = 0)
+func (s *AuthService) Logout(userID string) error {
+	parsedID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+	return s.userRepo.UpdateStatus(parsedID, 0)
 }
 
 // VerifyToken validates the JWT token strings

@@ -15,249 +15,249 @@ import TaskDetailsImageViewer from './TaskDetailsImageViewer';
 import TaskReportModal from './TaskReportModal';
 
 interface TaskDetailsModalProps {
-    task: TaskRow | null;
-    isOpen: boolean;
-    onClose: () => void;
-    onUpdateStatus: (taskId: string, status: number) => Promise<void>;
-    fetchTasks: () => void;
-    setSelectedTask: (task: TaskRow | null) => void;
-    onBulkUpdateStatus?: (ids: string[], status: number) => Promise<void>;
+ task: TaskRow | null;
+ isOpen: boolean;
+ onClose: () => void;
+ onUpdateStatus: (taskId: string, status: number) => Promise<void>;
+ fetchTasks: () => void;
+ setSelectedTask: (task: TaskRow | null) => void;
+ onBulkUpdateStatus?: (ids: string[], status: number) => Promise<void>;
 }
 
 const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
-    task,
-    isOpen,
-    onClose,
-    onUpdateStatus,
-    fetchTasks,
-    setSelectedTask,
-    onBulkUpdateStatus
+ task,
+ isOpen,
+ onClose,
+ onUpdateStatus,
+ fetchTasks,
+ setSelectedTask,
+ onBulkUpdateStatus
 }) => {
-    const [evidenceMap, setEvidenceMap] = React.useState<Record<string, string[]>>({});
-    const [noteMap, setNoteMap] = React.useState<Record<string, string>>({});
-    const [viewImage, setViewImage] = React.useState<{ images: string[], currentIndex: number } | null>(null);
-    const [selectedTaskIds, setSelectedTaskIds] = React.useState<Set<string>>(new Set());
-    const [showSuccessModal, setShowSuccessModal] = React.useState(false);
-    const [showRejectModal, setShowRejectModal] = React.useState(false);
-    const [showRejectSuccessModal, setShowRejectSuccessModal] = React.useState(false);
-    const [successModalVariant, setSuccessModalVariant] = React.useState<'success' | 'error'>('success');
-    const [showReportModal, setShowReportModal] = React.useState(false);
-    const [usersMap, setUsersMap] = React.useState<Record<string, string>>({});
+ const [evidenceMap, setEvidenceMap] = React.useState<Record<string, string[]>>({});
+ const [noteMap, setNoteMap] = React.useState<Record<string, string>>({});
+ const [viewImage, setViewImage] = React.useState<{ images: string[], currentIndex: number } | null>(null);
+ const [selectedTaskIds, setSelectedTaskIds] = React.useState<Set<string>>(new Set());
+ const [showSuccessModal, setShowSuccessModal] = React.useState(false);
+ const [showRejectModal, setShowRejectModal] = React.useState(false);
+ const [showRejectSuccessModal, setShowRejectSuccessModal] = React.useState(false);
+ const [successModalVariant, setSuccessModalVariant] = React.useState<'success' | 'error'>('success');
+ const [showReportModal, setShowReportModal] = React.useState(false);
+ const [usersMap, setUsersMap] = React.useState<Record<string, string>>({});
 
-    const handleToggleSelection = (id: string, force?: boolean) => {
-        setSelectedTaskIds(prev => {
-            const next = new Set(prev);
-            const val = force !== undefined ? force : !next.has(id);
-            if (val) next.add(id);
-            else next.delete(id);
-            return next;
-        });
-    };
+ const handleToggleSelection = (id: string, force?: boolean) => {
+ setSelectedTaskIds(prev => {
+ const next = new Set(prev);
+ const val = force !== undefined ? force : !next.has(id);
+ if (val) next.add(id);
+ else next.delete(id);
+ return next;
+ });
+ };
 
-    const handleBulkUpdateWrapper = async (ids: string[], status: number) => {
-        if (onBulkUpdateStatus) {
-            await onBulkUpdateStatus(ids, status);
-            if (status === 1) {
-                setSuccessModalVariant('success');
-                setShowSuccessModal(true);
-            }
-        }
-    };
+ const handleBulkUpdateWrapper = async (ids: string[], status: number) => {
+ if (onBulkUpdateStatus) {
+ await onBulkUpdateStatus(ids, status);
+ if (status === 1) {
+ setSuccessModalVariant('success');
+ setShowSuccessModal(true);
+ }
+ }
+ };
 
-    const getTargetIds = (): string[] => {
-        if (!task) return [];
-        const subTasks = task.subTasks && task.subTasks.length > 0 ? task.subTasks : [task];
-        return subTasks.map((t: any) => t.id);
-    };
+ const getTargetIds = (): string[] => {
+ if (!task) return [];
+ const subTasks = task.subTasks && task.subTasks.length > 0 ? task.subTasks : [task];
+ return subTasks.map((t: any) => t.id);
+ };
 
-    const handleOpenRejectModal = () => {
-        if (getTargetIds().length === 0) {
-            alert("Không có quy trình nào để từ chối.");
-            return;
-        }
-        setShowRejectModal(true);
-    };
+ const handleOpenRejectModal = () => {
+ if (getTargetIds().length === 0) {
+ alert("Không có quy trình nào để từ chối.");
+ return;
+ }
+ setShowRejectModal(true);
+ };
 
-    const handleRejectSubmit = async (reason: string) => {
-        const ids = getTargetIds();
-        if (onBulkUpdateStatus) {
-            // Pass rejection reason to API
-            await api.put('/task-details/bulk/status', {
-                ids: ids,
-                accept: -1,
-                note: reason,
-                frontend_url: window.location.origin
-            });
-        }
-        setShowRejectModal(false);
-        setSuccessModalVariant('error');
-        setShowRejectSuccessModal(true);
-        fetchTasks();
-    };
+ const handleRejectSubmit = async (reason: string) => {
+ const ids = getTargetIds();
+ if (onBulkUpdateStatus) {
+ // Pass rejection reason to API
+ await api.put('/task-details/bulk/status', {
+ ids: ids,
+ accept: -1,
+ note: reason,
+ frontend_url: window.location.origin
+ });
+ }
+ setShowRejectModal(false);
+ setSuccessModalVariant('error');
+ setShowRejectSuccessModal(true);
+ fetchTasks();
+ };
 
-    // Fetch users once when modal first opens to build UUID→Name map
-    React.useEffect(() => {
-        if (isOpen && Object.keys(usersMap).length === 0) {
-            api.get('/users').then(res => {
-                const users = res.data || [];
-                const map: Record<string, string> = {};
-                users.forEach((u: any) => { if (u.id && u.name) map[u.id] = u.name; });
-                setUsersMap(map);
-            }).catch(() => {});
-        }
-    }, [isOpen]);
+ // Fetch users once when modal first opens to build UUID→Name map
+ React.useEffect(() => {
+ if (isOpen && Object.keys(usersMap).length === 0) {
+ api.get('/users').then(res => {
+ const users = res.data || [];
+ const map: Record<string, string> = {};
+ users.forEach((u: any) => { if (u.id && u.name) map[u.id] = u.name; });
+ setUsersMap(map);
+ }).catch(() => {});
+ }
+ }, [isOpen]);
 
-    React.useEffect(() => {
-        if (isOpen && task) {
-            // Reset selection on open
-            setSelectedTaskIds(new Set());
+ React.useEffect(() => {
+ if (isOpen && task) {
+ // Reset selection on open
+ setSelectedTaskIds(new Set());
 
-            const subTasks = task.subTasks && task.subTasks.length > 0 ? task.subTasks : [task];
-            subTasks.forEach(async (t: any) => {
-                if (t.status_submit === 1 || t.status_approve !== 0) {
-                    try {
-                        let parsedData = Array.isArray(t.data) ? t.data : [];
-                        if (typeof t.data === 'string' && t.data.startsWith('[')) {
-                            parsedData = JSON.parse(t.data);
-                        }
-                        if (parsedData.length > 0) {
-                            setEvidenceMap(prev => ({ ...prev, [t.id]: parsedData }));
-                        }
-                    } catch (err) { }
+ const subTasks = task.subTasks && task.subTasks.length > 0 ? task.subTasks : [task];
+ subTasks.forEach(async (t: any) => {
+ if (t.status_submit === 1 || t.status_approve !== 0) {
+ try {
+ let parsedData = Array.isArray(t.data) ? t.data : [];
+ if (typeof t.data === 'string' && t.data.startsWith('[')) {
+ parsedData = JSON.parse(t.data);
+ }
+ if (parsedData.length > 0) {
+ setEvidenceMap(prev => ({ ...prev, [t.id]: parsedData }));
+ }
+ } catch (err) { }
 
-                    if (t.note_data) {
-                        setNoteMap(prev => ({ ...prev, [t.id]: t.note_data }));
-                    }
-                }
-            });
-        } else {
-            setEvidenceMap({});
-            setNoteMap({});
-            setViewImage(null);
-            setSelectedTaskIds(new Set());
-        }
-    }, [isOpen, task]);
+ if (t.note_data) {
+ setNoteMap(prev => ({ ...prev, [t.id]: t.note_data }));
+ }
+ }
+ });
+ } else {
+ setEvidenceMap({});
+ setNoteMap({});
+ setViewImage(null);
+ setSelectedTaskIds(new Set());
+ }
+ }, [isOpen, task]);
 
-    if (!isOpen || !task) return null;
+ if (!isOpen || !task) return null;
 
-    return ReactDOM.createPortal(
-        <AnimatePresence>
-            {/* Backdrop */}
-            <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+ return ReactDOM.createPortal(
+ <AnimatePresence>
+ {/* Backdrop */}
+ <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
 
-                {/* Modal Container - Using direct div instead of GlassCard to ensure flex works */}
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="w-full max-w-6xl bg-white/90 backdrop-blur-lg border border-white/40 shadow-xl rounded-2xl overflow-hidden"
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        maxHeight: '90vh',
-                    }}
-                >
-                    {/* 1. Header (Fixed Height) */}
-                    <div style={{ flexShrink: 0 }}>
-                        <TaskDetailsHeader
-                            task={task}
-                            onClose={onClose}
-                        />
-                    </div>
+ {/* Modal Container - Using direct div instead of GlassCard to ensure flex works */}
+ <motion.div
+ initial={{ opacity: 0, y: 10 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ duration: 0.3, ease: "easeOut" }}
+ className="w-full max-w-6xl bg-white/90 backdrop-blur-lg border border-white/40 shadow-xl rounded-2xl overflow-hidden"
+ style={{
+ display: 'flex',
+ flexDirection: 'column',
+ maxHeight: '90vh',
+ }}
+ >
+ {/* 1. Header (Fixed Height) */}
+ <div style={{ flexShrink: 0 }}>
+ <TaskDetailsHeader
+ task={task}
+ onClose={onClose}
+ />
+ </div>
 
-                    {/* 2. Content Body (Scrollable - Takes Remaining Space) */}
-                    <div
-                        className="bg-slate-50/30 p-4 md:p-6 custom-scrollbar"
-                        style={{
-                            flex: 1,
-                            overflowY: 'auto',
-                            minHeight: 0,
-                        }}
-                    >
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                            <TaskDetailsInfoSidebar task={task} usersMap={usersMap} />
+ {/* 2. Content Body (Scrollable - Takes Remaining Space) */}
+ <div
+ className="bg-slate-50/30 p-4 md:p-6 custom-scrollbar"
+ style={{
+ flex: 1,
+ overflowY: 'auto',
+ minHeight: 0,
+ }}
+ >
+ <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+ <TaskDetailsInfoSidebar task={task} usersMap={usersMap} />
 
-                            <TaskDetailsProcessList
-                                task={task}
-                                evidenceMap={evidenceMap}
-                                noteMap={noteMap}
-                                onViewImage={(images, index) => setViewImage({ images, currentIndex: index })}
-                                selectedTaskIds={selectedTaskIds}
-                                onToggleSelection={handleToggleSelection}
-                            />
-                        </div>
-                    </div>
+ <TaskDetailsProcessList
+ task={task}
+ evidenceMap={evidenceMap}
+ noteMap={noteMap}
+ onViewImage={(images, index) => setViewImage({ images, currentIndex: index })}
+ selectedTaskIds={selectedTaskIds}
+ onToggleSelection={handleToggleSelection}
+ />
+ </div>
+ </div>
 
-                    {/* 3. Footer (Fixed Height) */}
-                    <div style={{ flexShrink: 0 }}>
-                        <TaskDetailsFooter
-                            task={task}
-                            onUpdateStatus={onUpdateStatus}
-                            fetchTasks={fetchTasks}
-                            setSelectedTask={setSelectedTask}
-                            onBulkUpdate={handleBulkUpdateWrapper}
-                            selectedTaskIds={selectedTaskIds}
-                            onClearSelection={() => setSelectedTaskIds(new Set())}
-                            onReject={handleOpenRejectModal}
-                            onViewReport={() => setShowReportModal(true)}
-                        />
-                    </div>
-                </motion.div>
+ {/* 3. Footer (Fixed Height) */}
+ <div style={{ flexShrink: 0 }}>
+ <TaskDetailsFooter
+ task={task}
+ onUpdateStatus={onUpdateStatus}
+ fetchTasks={fetchTasks}
+ setSelectedTask={setSelectedTask}
+ onBulkUpdate={handleBulkUpdateWrapper}
+ selectedTaskIds={selectedTaskIds}
+ onClearSelection={() => setSelectedTaskIds(new Set())}
+ onReject={handleOpenRejectModal}
+ onViewReport={() => setShowReportModal(true)}
+ />
+ </div>
+ </motion.div>
 
-                {/* ImageViewer Overlay */}
-                <TaskDetailsImageViewer
-                    viewImage={viewImage}
-                    onClose={() => setViewImage(null)}
-                    onNext={() => setViewImage(prev => prev ? ({ ...prev, currentIndex: (prev.currentIndex + 1) % prev.images.length }) : null)}
-                    onPrev={() => setViewImage(prev => prev ? ({ ...prev, currentIndex: (prev.currentIndex - 1 + prev.images.length) % prev.images.length }) : null)}
-                />
+ {/* ImageViewer Overlay */}
+ <TaskDetailsImageViewer
+ viewImage={viewImage}
+ onClose={() => setViewImage(null)}
+ onNext={() => setViewImage(prev => prev ? ({ ...prev, currentIndex: (prev.currentIndex + 1) % prev.images.length }) : null)}
+ onPrev={() => setViewImage(prev => prev ? ({ ...prev, currentIndex: (prev.currentIndex - 1 + prev.images.length) % prev.images.length }) : null)}
+ />
 
-                {/* Task Report Modal */}
-                <TaskReportModal
-                    task={task}
-                    isOpen={showReportModal}
-                    onClose={() => setShowReportModal(false)}
-                    usersMap={usersMap}
-                    onViewImage={(images, index) => setViewImage({ images, currentIndex: index })}
-                    evidenceMap={evidenceMap}
-                    noteMap={noteMap}
-                />
+ {/* Task Report Modal */}
+ <TaskReportModal
+ task={task}
+ isOpen={showReportModal}
+ onClose={() => setShowReportModal(false)}
+ usersMap={usersMap}
+ onViewImage={(images, index) => setViewImage({ images, currentIndex: index })}
+ evidenceMap={evidenceMap}
+ noteMap={noteMap}
+ />
 
-                {/* Success Modal (Green) */}
-                <SuccessModal
-                    isOpen={showSuccessModal}
-                    onClose={() => {
-                        setShowSuccessModal(false);
-                        setSelectedTaskIds(new Set());
-                    }}
-                    title="Duyệt thành công!"
-                    message="Các quy trình được chọn đã được duyệt thành công."
-                    variant="success"
-                />
+ {/* Success Modal (Green) */}
+ <SuccessModal
+ isOpen={showSuccessModal}
+ onClose={() => {
+ setShowSuccessModal(false);
+ setSelectedTaskIds(new Set());
+ }}
+ title="Duyệt thành công!"
+ message="Các quy trình được chọn đã được duyệt thành công."
+ variant="success"
+ />
 
-                {/* Reject Reason Modal */}
-                <RejectModal
-                    isOpen={showRejectModal}
-                    onClose={() => setShowRejectModal(false)}
-                    onSubmit={handleRejectSubmit}
-                    title="Từ chối quy trình"
-                />
+ {/* Reject Reason Modal */}
+ <RejectModal
+ isOpen={showRejectModal}
+ onClose={() => setShowRejectModal(false)}
+ onSubmit={handleRejectSubmit}
+ title="Từ chối quy trình"
+ />
 
-                {/* Reject Success Modal (Red) */}
-                <SuccessModal
-                    isOpen={showRejectSuccessModal}
-                    onClose={() => {
-                        setShowRejectSuccessModal(false);
-                        setSelectedTaskIds(new Set());
-                    }}
-                    title="Từ chối thành công!"
-                    message="Các quy trình đã được từ chối."
-                    variant="error"
-                />
-            </div>
-        </AnimatePresence>,
-        document.body
-    );
+ {/* Reject Success Modal (Red) */}
+ <SuccessModal
+ isOpen={showRejectSuccessModal}
+ onClose={() => {
+ setShowRejectSuccessModal(false);
+ setSelectedTaskIds(new Set());
+ }}
+ title="Từ chối thành công!"
+ message="Các quy trình đã được từ chối."
+ variant="error"
+ />
+ </div>
+ </AnimatePresence>,
+ document.body
+ );
 };
 
 export default TaskDetailsModal;

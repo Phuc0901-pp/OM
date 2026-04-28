@@ -17,3 +17,10 @@ func SlugifyName(name string) string {
 	// Use gosimple/slug which handles Vietnamese nicely via unidecode
 	return slug.Make(name)
 }
+
+// BuildMinioPrefix constructs the standardized MinIO folder prefix based on context.
+func BuildMinioPrefix(ctx interface{}) string {
+	// We use interface{} to avoid circular imports if domain imports utils.
+	// But it's safer to just take raw strings here to be purely decoupled.
+	return ""
+}

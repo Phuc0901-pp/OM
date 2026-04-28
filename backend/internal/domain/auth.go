@@ -40,6 +40,7 @@ type User struct {
 	Email        string         `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash string         `gorm:"column:password_hash" json:"-"`
 	NumberPhone  string         `gorm:"column:number_phone" json:"number_phone"`
+	StatusUser   int            `gorm:"column:status_user;default:0" json:"status_user"` // 0 = offline, 1 = online
 
 	// Role relation
 	RoleID    *uuid.UUID `gorm:"column:id_role;type:uuid" json:"role_id"`
@@ -89,6 +90,7 @@ type UserRepository interface {
 	Delete(id uuid.UUID) error
 	UpdateRole(userID uuid.UUID, roleID uuid.UUID) error
 	Update(user *User) error
+	UpdateStatus(userID uuid.UUID, status int) error
 	GetUserCount() (int64, error)
 	GetTeamCount() (int64, error)
 	GetDB() *gorm.DB

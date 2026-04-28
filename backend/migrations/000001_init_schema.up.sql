@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     number_phone TEXT,
+    status_user INT NOT NULL DEFAULT 0,  -- 0 = offline, 1 = online
     id_role UUID REFERENCES roles(id) ON DELETE SET NULL,
     id_team UUID REFERENCES teams(id) ON DELETE SET NULL,
     id_person_created UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -310,6 +311,20 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_assign_id ON reports(id_assign);
 CREATE INDEX IF NOT EXISTS idx_reports_deleted_at ON reports(deleted_at);
+
+-- =======================================================================
+-- GUIDELINES (Work instructions per sub-work: text, images, URL)
+-- =======================================================================
+CREATE TABLE IF NOT EXISTS guidelines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_sub_work UUID NOT NULL REFERENCES sub_works(id) ON DELETE CASCADE,
+    guide_text TEXT DEFAULT '',
+    guide_images JSONB DEFAULT '[]'::jsonb,
+    guide_url VARCHAR(512) DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_guidelines_sub_work_id ON guidelines(id_sub_work);
 
 
 -- =======================================================================

@@ -82,12 +82,21 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Logout godoc
 // @Summary      Logout
-// @Description  Logout user (client should delete token)
+// @Description  Logout user and mark as offline
 // @Tags         auth
 // @Accept       json
 // @Produce      json
 // @Success      200  {object}  map[string]string
-// @Router       /users/logout [post]
+// @Router       /auth/logout [post]
+// @Security     BearerAuth
 func (h *AuthHandler) Logout(c *gin.Context) {
+	// Get user_id injected by AuthMiddleware
+	userID, exists := c.Get("user_id")
+	if exists {
+		if id, ok := userID.(string); ok {
+			// Best-effort: update status to offline, ignore error
+			_ = h.authService.Logout(id)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

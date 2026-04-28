@@ -10,18 +10,14 @@ import (
 	"github.com/phuc/cmms-backend/internal/infrastructure/storage"
 	"gorm.io/gorm"
 )
-
 type EvidenceService struct {
 	DB           *gorm.DB
 	MinioClient  *storage.MinioClient
-	Notification *NotificationService
 }
-
-func NewEvidenceService(db *gorm.DB, minioClient *storage.MinioClient, notification *NotificationService) *EvidenceService {
+func NewEvidenceService(db *gorm.DB, minioClient *storage.MinioClient) *EvidenceService {
 	return &EvidenceService{
 		DB:           db,
 		MinioClient:  minioClient,
-		Notification: notification,
 	}
 }
 

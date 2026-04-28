@@ -3,12 +3,12 @@ import OfflineIndicator from '../common/OfflineIndicator';
 import SyncStatusBadge from '../common/SyncStatusBadge';
 
 const OfflineSyncStatus = () => {
-    return (
-        <>
-            <OfflineIndicator position="bottom" />
-            <SyncStatusBadge />
-        </>
-    );
+ return (
+ <>
+ <OfflineIndicator position="bottom" />
+ <SyncStatusBadge />
+ </>
+ );
 };
 
 export default OfflineSyncStatus;

@@ -43,7 +43,6 @@ type Container struct {
 	Asset       *handlers.AssetHandler
 	ConfigH     *handlers.ConfigHandler
 	Template    *handlers.TemplateHandler
-	Notify      *handlers.NotificationHandler
 	Assign      *handlers.AssignHandler
 	Stats       *handlers.StatsHandler
 	Station     *handlers.StationHandler
@@ -53,6 +52,7 @@ type Container struct {
 	Upload      *handlers.UploadHandler
 	Lark        *handlers.LarkHandler
 	Report      *handlers.ReportHandler
+	GuideLine   *handlers.GuideLineHandler
 
 	// Core Services needed for Router logic
 	AuthService    *services.AuthService
@@ -67,7 +67,6 @@ func BuildContainer(cfg config.Config, db *gorm.DB) *Container {
 	c := &Container{
 		Config: cfg,
 		DB:     db,
-		WSHub:  infraWS.NewHub(),
 	}
 
 	// 1. External Infrastructure
@@ -80,6 +79,9 @@ func BuildContainer(cfg config.Config, db *gorm.DB) *Container {
 
 	// 2. Repositories
 	userRepo := postgres.NewUserRepository(db)
+
+	// WSHub needs userRepo to sync status_user on connect/disconnect
+	c.WSHub = infraWS.NewHub(userRepo)
 	roleRepo := postgres.NewRoleRepository(db)
 	teamRepo := postgres.NewTeamRepository(db)
 	ownerRepo := postgres.NewOwnerRepository(db)
@@ -98,12 +100,13 @@ func BuildContainer(cfg config.Config, db *gorm.DB) *Container {
 	// 3. Core Services
 	c.AuthService = services.NewAuthService(userRepo)
 	userService := services.NewUserService(userRepo)
-	notificationService := services.NewNotificationService(db, c.WSHub)
 	larkService := services.NewLarkService(cfg.Lark.AppID, cfg.Lark.AppSecret)
 	statsService := services.NewStatsService(statsRepo)
-	c.ReminderSvc = services.NewReminderService(db, notificationService)
-	attendanceService := services.NewAttendanceService(attendanceRepo, c.MinioClient, notificationService)
+	c.ReminderSvc = services.NewReminderService(db)
+	attendanceService := services.NewAttendanceService(attendanceRepo, c.MinioClient)
 	reportService := services.NewReportService(reportRepo)
+	mediaSvcForPDF := services.NewAllocationMediaService(detailAssignRepo)
+	reportPDFSvc := services.NewReportPDFService(assignRepo, detailAssignRepo, reportRepo, mediaSvcForPDF)
 
 	// 4. Handlers
 	c.Auth = handlers.NewAuthHandler(c.AuthService)
@@ -114,16 +117,17 @@ func BuildContainer(cfg config.Config, db *gorm.DB) *Container {
 	c.Asset = handlers.NewAssetHandler(assetRepo, workRepo, subWorkRepo)
 	c.ConfigH = handlers.NewConfigHandler(configRepo)
 	c.Template = handlers.NewTemplateHandler(templateRepo)
-	c.Notify = handlers.NewNotificationHandler(db, notificationService)
-	c.Assign = handlers.NewAssignHandler(db, assignRepo, detailAssignRepo, configRepo, assetRepo, workRepo, subWorkRepo, templateRepo, c.WSHub, notificationService, larkService, cfg)
+	c.Assign = handlers.NewAssignHandler(db, assignRepo, detailAssignRepo, configRepo, assetRepo, workRepo, subWorkRepo, templateRepo, c.WSHub, larkService, cfg)
 	c.Stats = handlers.NewStatsHandler(statsService)
 	c.Station = handlers.NewStationHandler(db)
 	c.Attendance = handlers.NewAttendanceHandler(attendanceService, c.Stats)
 	c.Admin = handlers.NewAdminHandler(db)
 	c.Media = handlers.NewMediaHandler(c.MinioClient)
 	c.Upload = handlers.NewUploadHandler(c.MinioClient)
-	c.Lark = handlers.NewLarkHandler(larkService)
+	c.Lark = handlers.NewLarkHandler(larkService, reportPDFSvc)
 	c.Report = handlers.NewReportHandler(reportService)
+	guideLineRepo := postgres.NewGuideLineRepository(db)
+	c.GuideLine = handlers.NewGuideLineHandler(guideLineRepo)
 
 	// Wiring WS Handler
 	c.WSHandler = infraWS.NewHandler(c.WSHub, c.AuthService)
@@ -197,16 +201,18 @@ func (c *Container) SetupRouter() *gin.Engine {
 	api.GET("/public/report/:id", c.Assign.GetPublicReport)
 	api.GET("/public/generic-report/:id", c.Report.GetGenericReport)
 	api.GET("/public/attendance-by-assign", c.Attendance.GetByAssignDates)
+	api.GET("/public/media/library", c.Media.PublicGetLibraryImages)
+	api.GET("/public/export/:id", c.Project.ExportProject)
+	api.POST("/public/export/:id", c.Project.ExportProject)
+	api.GET("/redirect-folder", c.Project.RedirectFolder)
 
 	api.POST("/auth/login", middleware.RateLimitMiddleware(5, 1*time.Minute), c.Auth.Login)
-	api.POST("/auth/logout", c.Auth.Logout)
 
 	r.GET("/api/ws", func(ctx *gin.Context) { c.WSHandler.ServeWS(ctx.Writer, ctx.Request) })
 
 	// --- PROTECTED ROUTES ---
 	protected := api.Group("/")
 	protected.Use(middleware.AuthMiddleware(c.AuthService))
-	protected.Use(middleware.MaintenanceGuard())
 	{
 		c.mapProtectedRoutes(protected)
 	}
@@ -233,6 +239,9 @@ func (c *Container) mapProtectedRoutes(p *gin.RouterGroup) {
 	p.POST("/users/:id/restore", c.User.RestoreUser)
 	p.DELETE("/users/:id/permanent", c.User.PermanentDeleteUser)
 
+	// Auth
+	p.POST("/auth/logout", c.Auth.Logout)
+
 	// Roles & Teams
 	p.GET("/roles", c.Role.GetAllRoles)
 	p.POST("/roles", c.Role.CreateRole)
@@ -253,22 +262,10 @@ func (c *Container) mapProtectedRoutes(p *gin.RouterGroup) {
 
 	// Reports
 	p.POST("/reports", c.Report.CreateReport)
-
-	// Notifications
-	p.POST("/monitoring/subscribe", c.Notify.Subscribe)
-	p.GET("/monitoring/vapid-key", c.Notify.GetVapidPublicKey)
-	p.GET("/notifications", c.Notify.GetNotifications)
-	p.PUT("/notifications/:id/read", c.Notify.MarkRead)
-	p.PUT("/notifications/read-all", c.Notify.MarkAllRead)
-	p.DELETE("/notifications/:id", c.Notify.DeleteNotification)
-	p.DELETE("/notifications/delete-all", c.Notify.DeleteAllNotifications)
-
 	// Stats & Admin
 	p.GET("/admin/stats", c.Stats.GetAdminStats)
 	p.GET("/manager/stats", c.Stats.GetManagerStats)
 	p.GET("/user/stats", c.Stats.GetUserStats)
-	p.GET("/admin/maintenance", c.Notify.GetMaintenanceStatus)
-	p.POST("/admin/maintenance", c.Notify.ToggleMaintenance)
 	p.GET("/admin/tables", c.Admin.GetAllTables)
 	p.GET("/admin/tables/:table", c.Admin.GetTableData)
 	p.POST("/admin/tables/:table", c.Admin.CreateRow)
@@ -301,6 +298,8 @@ func (c *Container) mapProtectedRoutes(p *gin.RouterGroup) {
 	p.POST("/projects/bulk-restore", c.Project.BulkRestoreProjects)
 	p.DELETE("/projects/bulk-permanent", c.Project.BulkPermanentDeleteProjects)
 	p.GET("/projects", c.Project.ListProjects)
+	p.GET("/projects/:id/export-preview", c.Project.GetProjectExportPreview)
+	p.POST("/projects/:id/export", c.Project.ExportProject)
 	p.GET("/projects/:id", c.Project.GetProject)
 	p.POST("/projects", c.Project.CreateProject)
 	p.PUT("/projects/:id", c.Project.UpdateProject)
@@ -378,6 +377,10 @@ func (c *Container) mapProtectedRoutes(p *gin.RouterGroup) {
 	// Lark
 	p.POST("/lark/push-report", c.Lark.PushReportLink)
 	p.POST("/lark/push-allocation", c.Lark.PushAllocation)
+
+	// Guidelines
+	p.GET("/guidelines/subwork/:id", c.GuideLine.GetBySubWorkID)
+	p.POST("/guidelines/subwork/:id", c.GuideLine.Upsert)
 }
 
 func (c *Container) configureCORS() gin.HandlerFunc {

@@ -91,6 +91,10 @@ func (r *userRepository) Update(user *domain.User) error {
 	return r.db.Omit("RoleModel", "Team", "PersonCreated").Save(user).Error
 }
 
+func (r *userRepository) UpdateStatus(userID uuid.UUID, status int) error {
+	return r.db.Model(&domain.User{}).Where("id = ?", userID).Update("status_user", status).Error
+}
+
 func (r *userRepository) GetUserCount() (int64, error) {
 	var count int64
 	if err := r.db.Model(&domain.User{}).Where("deleted_at IS NULL").Count(&count).Error; err != nil {

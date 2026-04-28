@@ -17,14 +17,11 @@ import (
 type AttendanceService struct {
 	repo         *postgres.AttendanceRepository
 	minioClient  *storage.MinioClient
-	Notification *NotificationService
 }
-
-func NewAttendanceService(repo *postgres.AttendanceRepository, minioClient *storage.MinioClient, notif *NotificationService) *AttendanceService {
+func NewAttendanceService(repo *postgres.AttendanceRepository, minioClient *storage.MinioClient) *AttendanceService {
 	return &AttendanceService{
 		repo:         repo,
 		minioClient:  minioClient,
-		Notification: notif,
 	}
 }
 
@@ -119,22 +116,6 @@ func (s *AttendanceService) CheckInWithPhotos(userID uuid.UUID, projectID *uuid.
 	// Save updated attendance
 	if err := s.repo.UpdatePhotos(attendance); err != nil {
 		return nil, err
-	}
-
-	// NOTIFICATION
-	if s.Notification != nil {
-		go func() {
-			var u domain.User
-			if err := s.Notification.DB.First(&u, "id = ?", userID).Error; err == nil {
-				msg := fmt.Sprintf("%s đã chấm công vào làm tại %s", u.Name, address)
-				meta := map[string]interface{}{
-					"type":            "checkin",
-					"attendance_id":   attendance.ID.String(),
-					"personnel_photo": attendance.PersonnelPhoto, // Sends First Image or JSON string (notification handler might need update to safe parse)
-				}
-				s.Notification.NotifyManagers("Chấm công vào dự án", msg, meta)
-			}
-		}()
 	}
 
 	return attendance, nil
@@ -312,22 +293,6 @@ func (s *AttendanceService) RequestCheckout(userID uuid.UUID, photos map[string]
 		return nil, err
 	}
 
-	// NOTIFICATION
-	if s.Notification != nil {
-		go func() {
-			var u domain.User
-			if err := s.Notification.DB.First(&u, "id = ?", userID).Error; err == nil {
-				msg := fmt.Sprintf("%s yêu cầu Checkout tại %s", u.Name, address)
-				meta := map[string]interface{}{
-					"type":             "checkout_request",
-					"attendance_id":    attendance.ID.String(),
-					"checkout_img_url": attendance.CheckoutImgURL,
-					"personnel_photo":  attendance.PersonnelPhoto,
-				}
-				s.Notification.NotifyManagers("Yêu cầu Checkout", msg, meta)
-			}
-		}()
-	}
 
 	return attendance, nil
 }
@@ -353,10 +318,6 @@ func (s *AttendanceService) ApproveCheckout(attendanceID, managerID uuid.UUID) (
 		return nil, err
 	}
 
-	// NOTIFICATION
-	if s.Notification != nil {
-		s.Notification.NotifyCheckoutStatus(attendance.IDUser, true, "", attendance.ID, attendance.PersonnelPhoto, attendance.CheckoutImgURL)
-	}
 
 	return attendance, nil
 }
@@ -382,10 +343,6 @@ func (s *AttendanceService) RejectCheckout(attendanceID, managerID uuid.UUID, re
 		return nil, err
 	}
 
-	// NOTIFICATION
-	if s.Notification != nil {
-		s.Notification.NotifyCheckoutStatus(attendance.IDUser, false, reason, attendance.ID, attendance.PersonnelPhoto, attendance.CheckoutImgURL)
-	}
 
 	return attendance, nil
 }

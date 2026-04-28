@@ -114,6 +114,41 @@ services:
     networks:
       - raitek_server
 
+  # ============================================================
+  # Sync Agent: Kéo file PDF mới từ MinIO về Ổ Drive Công ty
+  # ============================================================
+  # Hoạt động: Mỗi SYNC_INTERVAL giây, chạy lệnh rclone copy
+  #   minio:dev  (chỉ thư mục /reports/) --> /mnt/nas_drive
+  # Thư mục /mnt/nas_drive được bind-mount trực tiếp vào Synology Shared Folder.
+  # ==> File PDF tự xuất hiện trong Ổ NAS công ty sau khi đồng bộ!
+  sync-agent:
+    build:
+      context: ./sync-agent
+      dockerfile: Dockerfile
+    container_name: cmms_sync_agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MINIO_ENDPOINT: minio:2603
+      MINIO_BUCKET: ${MINIO_BUCKET:-dev}
+      SYNC_INTERVAL: 600
+    volumes:
+      # ✔ Production: Bind-mount trực tiếp vào đườ ng dẫn thư mục Synology NAS
+      # Thay /mnt/synology/raitek-reports bằng đườ ng dẫn thực tế trên server:
+      #   - /mnt/synology/raitek-reports:/mnt/nas_drive
+      # Nếu chưa có NAS, dùng volume Docker tạm thờ i:
+      - nas_drive:/mnt/nas_drive
+    depends_on:
+      - minio
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
 networks:
   raitek_server:
     external: true
@@ -123,3 +158,6 @@ volumes:
   pgdata_prod:
   miniodata_prod:
   rabbitmqdata_prod:
+  # nas_drive: Volume đồng bộ PDF.
+  # Production: Thay thế bằng bind-mount vào đườ ng dẫn Synology NAS thực tế.
+  nas_drive:

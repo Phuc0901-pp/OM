@@ -83,7 +83,7 @@ const DesktopLogin = () => {
 
                 <div className="relative z-10 pb-[6vh] pl-[8vh] pr-[8vh] text-xs text-slate-500 font-bold tracking-widest uppercase flex justify-between">
                     <span>2026 RAITEK O&M</span>
-                    <span>Version 6.4.2</span>
+                    <span>Version 6.5.0</span>
                 </div>
             </div>
 

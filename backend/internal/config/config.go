@@ -52,13 +52,17 @@ type RabbitMQConfig struct {
 //   CompletedTableID      — TableID for the "Task Approved" Bitable table
 //   RejectAppToken        — App Token for the dedicated "Task Rejected" Bitable
 //   RejectTableID         — TableID for the "Task Rejected" Bitable table
+//   SubmitAppToken        — App Token for the "NỘP DỮ LIỆU" Bitable (on submit)
+//   SubmitTableID         — TableID for the "NỘP DỮ LIỆU" Bitable table
 type LarkConfig struct {
-	AppID           string
-	AppSecret       string
-	AppToken        string
+	AppID            string
+	AppSecret        string
+	AppToken         string
 	CompletedTableID string
-	RejectAppToken  string
-	RejectTableID   string
+	RejectAppToken   string
+	RejectTableID    string
+	SubmitAppToken   string
+	SubmitTableID    string
 }
 
 // AuthConfig holds JWT and session settings.
@@ -105,6 +109,9 @@ func Load() Config {
 			CompletedTableID: os.Getenv("LARK_COMPLETED_TASK_TABLE_ID"),
 			RejectAppToken:   getEnvOrDefault("LARK_REJECT_APP_TOKEN", "JbTBbo3QQaz7r5smJZilen5EgXg"),
 			RejectTableID:    getEnvOrDefault("LARK_REJECT_TABLE_ID", "tblkCQwQANfv8E7g"),
+			// "RAITEK | NỘP DỮ LIỆU" table — synced immediately on each worker Submit
+			SubmitAppToken: getEnvOrDefault("LARK_SUBMIT_APP_TOKEN", "JbTBbo3QQaz7r5smJZilen5EgXg"),
+			SubmitTableID:  getEnvOrDefault("LARK_SUBMIT_TABLE_ID", "tblUjGzPhLDSNGq8"),
 		},
 		Auth: AuthConfig{
 			JWTSecret: getEnvOrDefault("JWT_SECRET", "changeme-in-production"),

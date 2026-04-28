@@ -19,12 +19,11 @@ import (
 type BroadcastFunc func(msg []byte)
 
 // AllocationWorkflowService handles the business logic for task status transitions:
-// Approve, Reject, Bulk update, and Submit. Also handles notification dispatch and
-// Lark sync triggers. Extracted from the monolithic allocation_handler.go.
+// Approve, Reject, Bulk update, and Submit. Also handles Lark sync triggers.
+// Extracted from the monolithic allocation_handler.go.
 type AllocationWorkflowService struct {
 	db               *gorm.DB
 	detailAssignRepo domain.DetailAssignRepository
-	notifSvc         *NotificationService
 	larkSvc          *LarkService
 	broadcast        BroadcastFunc
 	cfg              config.Config
@@ -33,7 +32,6 @@ type AllocationWorkflowService struct {
 func NewAllocationWorkflowService(
 	db *gorm.DB,
 	detailAssignRepo domain.DetailAssignRepository,
-	notifSvc *NotificationService,
 	larkSvc *LarkService,
 	broadcastFn BroadcastFunc,
 	cfg config.Config,
@@ -41,7 +39,6 @@ func NewAllocationWorkflowService(
 	return &AllocationWorkflowService{
 		db:               db,
 		detailAssignRepo: detailAssignRepo,
-		notifSvc:         notifSvc,
 		larkSvc:          larkSvc,
 		broadcast:        broadcastFn,
 		cfg:              cfg,
@@ -93,8 +90,8 @@ func (s *AllocationWorkflowService) ApproveDetail(
 
 	s.broadcastEvent()
 
-	// Async: notifications + Lark sync
-	if s.notifSvc != nil {
+	// Async: Lark sync
+	if s.larkSvc != nil {
 		detailCopy := *detail
 		go s.postApproveAsync(detailCopy, actorID, frontendURL)
 	}
@@ -102,7 +99,7 @@ func (s *AllocationWorkflowService) ApproveDetail(
 	return detail, nil
 }
 
-// postApproveAsync sends engineer notifications and syncs to Lark after approval.
+// postApproveAsync syncs completed task to Lark after approval.
 func (s *AllocationWorkflowService) postApproveAsync(detail domain.DetailAssign, actorID string, frontendURL string) {
 	var assign domain.Assign
 	if err := s.db.First(&assign, "id = ?", detail.AssignID).Error; err != nil {
@@ -118,20 +115,7 @@ func (s *AllocationWorkflowService) postApproveAsync(detail domain.DetailAssign,
 
 	// Lark sync
 	if frontendURL != "" && s.larkSvc != nil {
-		syncCompletedTaskToLark(s.db, s.larkSvc, s.detailAssignRepo, detail, assign, userIDs, actorID, frontendURL, ctxNames)
-	}
-
-	taskName := ctxNames.SubWorkName + " - " + ctxNames.AssetName
-	for _, uidStr := range userIDs {
-		userID, err := uuid.Parse(uidStr)
-		if err != nil {
-			continue
-		}
-		var user domain.User
-		if err := s.db.First(&user, "id = ?", userID).Error; err != nil {
-			continue
-		}
-		s.notifSvc.NotifyTaskStatusUpdate(&user, taskName, ctxNames.ProjectName, true, "", time.Now(), detail.ID, detail.AssignID, nil)
+		syncCompletedTaskToLark(s.db, s.larkSvc, s.detailAssignRepo, s.cfg, detail, assign, userIDs, actorID, frontendURL, ctxNames)
 	}
 }
 
@@ -173,17 +157,16 @@ func (s *AllocationWorkflowService) RejectDetail(
 
 	s.broadcastEvent()
 
-	if s.notifSvc != nil {
+	if s.larkSvc != nil {
 		detailCopy := *detail
-		reason := noteReject
-		go s.postRejectAsync(detailCopy, reason, actorID, frontendURL)
+		go s.postRejectAsync(detailCopy, actorID, frontendURL)
 	}
 
 	return detail, nil
 }
 
-// postRejectAsync sends engineer notifications and syncs rejected task to Lark.
-func (s *AllocationWorkflowService) postRejectAsync(detail domain.DetailAssign, reason string, actorID string, frontendURL string) {
+// postRejectAsync syncs rejected task to Lark.
+func (s *AllocationWorkflowService) postRejectAsync(detail domain.DetailAssign, actorID string, frontendURL string) {
 	var assign domain.Assign
 	if err := s.db.First(&assign, "id = ?", detail.AssignID).Error; err != nil {
 		return
@@ -199,19 +182,6 @@ func (s *AllocationWorkflowService) postRejectAsync(detail domain.DetailAssign, 
 	// Lark sync for rejected tasks
 	if frontendURL != "" && s.larkSvc != nil {
 		syncRejectedTaskToLark(s.db, s.larkSvc, s.cfg, detail, assign, userIDs, actorID, frontendURL, ctxNames)
-	}
-
-	taskName := ctxNames.SubWorkName + " - " + ctxNames.AssetName
-	for _, uidStr := range userIDs {
-		userID, err := uuid.Parse(uidStr)
-		if err != nil {
-			continue
-		}
-		var user domain.User
-		if err := s.db.First(&user, "id = ?", userID).Error; err != nil {
-			continue
-		}
-		s.notifSvc.NotifyTaskStatusUpdate(&user, taskName, ctxNames.ProjectName, false, reason, time.Now(), detail.ID, detail.AssignID, nil)
 	}
 }
 
@@ -275,7 +245,7 @@ func (s *AllocationWorkflowService) BulkUpdateStatus(
 					if err != nil {
 						return
 					}
-					syncCompletedTaskToLark(s.db, s.larkSvc, s.detailAssignRepo, d, assign, userIDs, actorID, frontendURL, ctxNames)
+					syncCompletedTaskToLark(s.db, s.larkSvc, s.detailAssignRepo, s.cfg, d, assign, userIDs, actorID, frontendURL, ctxNames)
 				}(detailCopy)
 			}
 
@@ -335,46 +305,141 @@ func (s *AllocationWorkflowService) BulkUpdateStatus(
 	return result
 }
 
-// NotifySubmission sends an async notification to managers when an engineer submits work.
-func (s *AllocationWorkflowService) NotifySubmission(detailID uuid.UUID, submitterName string) {
-	if s.notifSvc == nil {
-		return
-	}
+
+
+// PostSubmitAsync wraps all post-submit side-effects (Lark sync)
+// into a single non-blocking goroutine, called from the SubmitDetail API handler.
+func (s *AllocationWorkflowService) PostSubmitAsync(detailID uuid.UUID, submitterName string, frontendURL string) {
 	go func() {
+		// 1. Resolve context names
 		ctxNames, err := s.detailAssignRepo.GetNamesForMinioPath(detailID)
 		if err != nil {
 			return
 		}
 
-		// Fetch the detail to get AssignID — required for the frontend to navigate
-		// directly to the correct assignment without using the deprecated /allocations/lookup endpoint.
+		// 2. Fetch full detail
 		detail, err := s.detailAssignRepo.FindByID(detailID)
 		if err != nil {
 			return
 		}
 
-		msg := submitterName + " vừa nộp dữ liệu công việc"
-		if ctxNames.ProjectName != "" {
-			msg += " [" + ctxNames.ProjectName + "]"
+
+
+		// 4. Lark sync — push mini-report row to "RAITEK | NỘP DỮ LIỆU" table
+		if frontendURL != "" && s.larkSvc != nil {
+			var assign domain.Assign
+			if err := s.db.First(&assign, "id = ?", detail.AssignID).Error; err != nil {
+				return
+			}
+			var userIDs []string
+			_ = json.Unmarshal(assign.UserIDs, &userIDs)
+			syncSubmittedTaskToLark(s.db, s.larkSvc, s.cfg, *detail, assign, userIDs, submitterName, frontendURL, ctxNames)
 		}
-		if ctxNames.SubWorkName != "" {
-			msg += " - " + ctxNames.SubWorkName
-		}
-		msg += ". Cần phê duyệt."
-		s.notifSvc.NotifyManagers(
-			"Nộp dữ liệu mới",
-			msg,
-			map[string]interface{}{
-				"type":      "submission",
-				"task_id":   detailID.String(),
-				"detail_id": detailID.String(),
-				// assign_id lets the frontend call GET /allocations/:id/tasks directly
-				// without any fallback lookup. This fixes the "Công việc không tồn tại" bug.
-				"assign_id": detail.AssignID.String(),
-			},
-		)
 	}()
 }
+
+// syncSubmittedTaskToLark pushes a newly-submitted task record to the
+// "RAITEK | NỘP DỮ LIỆU" Bitable table using a public, no-login report link.
+func syncSubmittedTaskToLark(
+	db *gorm.DB,
+	larkSvc *LarkService,
+	cfg config.Config,
+	detail domain.DetailAssign,
+	assign domain.Assign,
+	userIDs []string,
+	submitterName string,
+	frontendURL string,
+	ctxNames *domain.MinioPathContext,
+) {
+	submitAppToken := cfg.Lark.SubmitAppToken
+	submitTableID := cfg.Lark.SubmitTableID
+
+	if submitAppToken == "" || submitTableID == "" {
+		fmt.Println("[LarkSync/Submit] Skipped: Missing SUBMIT_APP_TOKEN or SUBMIT_TABLE_ID in config")
+		return
+	}
+
+	// Build public no-login report link: /share/report/{assignID}?sub={subWorkID}&asset={assetID}&type=submit
+	reportLink := fmt.Sprintf("%s/share/report/%s", frontendURL, assign.ID.String())
+	queryParts := []string{}
+	if detail.Config != nil {
+		queryParts = append(queryParts, "asset="+detail.Config.AssetID.String())
+		queryParts = append(queryParts, "sub="+detail.Config.SubWorkID.String())
+	}
+	queryParts = append(queryParts, "type=submit")
+	if len(queryParts) > 0 {
+		reportLink += "?" + strings.Join(queryParts, "&")
+	}
+
+	// Parse submitted_at timestamp
+	submittedAt := ""
+	var subTimes []time.Time
+	if err := json.Unmarshal(detail.SubmittedAt, &subTimes); err == nil && len(subTimes) > 0 {
+		submittedAt = subTimes[len(subTimes)-1].Format("02/01/2006 15:04:05")
+	}
+
+	// Resolve assignees
+	var assignees []domain.User
+	for _, uidStr := range userIDs {
+		uid, err := uuid.Parse(uidStr)
+		if err != nil {
+			continue
+		}
+		var u domain.User
+		if err := db.First(&u, "id = ?", uid).Error; err == nil {
+			assignees = append(assignees, u)
+		}
+	}
+
+	// Use submitterName as fallback when no assignees resolved from DB
+	if len(assignees) == 0 {
+		fields := map[string]interface{}{
+			"Assign ID":                   assign.ID.String(),
+			"Họ và tên nhân sự phụ trách": submitterName,
+			"Work":                        ctxNames.WorkName,
+			"Sub - work":                  ctxNames.SubWorkName,
+			"Asset":                       ctxNames.AssetName,
+			"Process":                     ctxNames.ProcessName,
+		}
+		if reportLink != "" {
+			fields["Đường dẫn"] = map[string]string{
+				"link": reportLink,
+				"text": "Xem Báo Cáo",
+			}
+		}
+		if submittedAt != "" {
+			fields["Thời gian Nhân sự nộp"] = submittedAt
+		}
+		if err := larkSvc.PushReportToBitable(submitAppToken, submitTableID, fields); err != nil {
+			fmt.Printf("[LarkSync/Submit] Failed for %s: %v\n", submitterName, err)
+		}
+		return
+	}
+
+	for _, assignee := range assignees {
+		fields := map[string]interface{}{
+			"Assign ID":                   assign.ID.String(),
+			"Họ và tên nhân sự phụ trách": assignee.Name,
+			"Work":                        ctxNames.WorkName,
+			"Sub - work":                  ctxNames.SubWorkName,
+			"Asset":                       ctxNames.AssetName,
+			"Process":                     ctxNames.ProcessName,
+		}
+		if reportLink != "" {
+			fields["Đường dẫn"] = map[string]string{
+				"link": reportLink,
+				"text": "Xem Báo Cáo",
+			}
+		}
+		if submittedAt != "" {
+			fields["Thời gian Nhân sự nộp"] = submittedAt
+		}
+		if err := larkSvc.PushReportToBitable(submitAppToken, submitTableID, fields); err != nil {
+			fmt.Printf("[LarkSync/Submit] Failed for %s: %v\n", assignee.Name, err)
+		}
+	}
+}
+
 
 // syncCompletedTaskToLark is a package-level helper shared by workflow methods.
 // It mirrors the unexported function formerly in allocation_handler.go.
@@ -382,6 +447,7 @@ func syncCompletedTaskToLark(
 	db *gorm.DB,
 	larkSvc *LarkService,
 	detailAssignRepo domain.DetailAssignRepository,
+	cfg config.Config,
 	detail domain.DetailAssign,
 	assign domain.Assign,
 	userIDs []string,
@@ -394,8 +460,8 @@ func syncCompletedTaskToLark(
 		AppToken string `gorm:"column:lark_app_token"`
 		TableID  string `gorm:"column:lark_table_id"`
 	}
-	var cfg LarkConfig
-	if err := db.Raw(`SELECT lark_app_token, lark_table_id FROM projects WHERE id = ? LIMIT 1`, assign.ProjectID).Scan(&cfg).Error; err != nil || cfg.AppToken == "" {
+	var projCfg LarkConfig
+	if err := db.Raw(`SELECT lark_app_token, lark_table_id FROM projects WHERE id = ? LIMIT 1`, assign.ProjectID).Scan(&projCfg).Error; err != nil || projCfg.AppToken == "" {
 		return
 	}
 
@@ -457,10 +523,13 @@ func syncCompletedTaskToLark(
 		if approvalAt != "" {
 			fields["Thời gian Quản lý duyệt"] = approvalAt
 		}
-		if err := larkSvc.PushReportToBitable(cfg.AppToken, cfg.TableID, fields); err != nil {
+		if err := larkSvc.PushReportToBitable(projCfg.AppToken, projCfg.TableID, fields); err != nil {
 			fmt.Printf("[LarkSync] Failed for %s: %v\n", assignee.Name, err)
 		}
 	}
+
+	// Also update the NỘP DỮ LIỆU Submit table with manager name + approval time
+	updateSubmitRecordInLark(larkSvc, cfg, assign.ID.String(), ctxNames.SubWorkName, ctxNames.AssetName, ctxNames.ProcessName, approverName, approvalAt, true)
 }
 
 // syncRejectedTaskToLark pushes a rejected task record to the dedicated Lark Bitable table
@@ -557,4 +626,43 @@ func syncRejectedTaskToLark(
 			fmt.Printf("[LarkSync/Reject] Failed for %s: %v\n", assignee.Name, err)
 		}
 	}
+
+	// Also update the NỘP DỮ LIỆU Submit table with manager name + rejection time
+	if rejectorIDStr != "" {
+		var rejectorUser domain.User
+		mgrName := "Quản lý"
+		if err := db.First(&rejectorUser, "id = ?", rejectorIDStr).Error; err == nil {
+			mgrName = rejectorUser.Name
+		}
+		updateSubmitRecordInLark(larkSvc, cfg, assign.ID.String(), ctxNames.SubWorkName, ctxNames.AssetName, ctxNames.ProcessName, mgrName, rejectedAt, false)
+	} else {
+		updateSubmitRecordInLark(larkSvc, cfg, assign.ID.String(), ctxNames.SubWorkName, ctxNames.AssetName, ctxNames.ProcessName, "Quản lý", rejectedAt, false)
+	}
 }
+
+// updateSubmitRecordInLark is a thin wrapper that delegates to larkSvc.UpdateSubmitRecord,
+// resolving the app token / table ID from the centralized config.
+func updateSubmitRecordInLark(
+	larkSvc *LarkService,
+	cfg config.Config,
+	assignID string,
+	subWorkName string,
+	assetName string,
+	processName string,
+	managerName string,
+	actionAt string,
+	isApprove bool,
+) {
+	submitAppToken := cfg.Lark.SubmitAppToken
+	submitTableID := cfg.Lark.SubmitTableID
+	if submitAppToken == "" || submitTableID == "" {
+		fmt.Println("[LarkSync/UpdateSubmit] Skipped: LARK_SUBMIT_APP_TOKEN or LARK_SUBMIT_TABLE_ID not configured")
+		return
+	}
+	if err := larkSvc.UpdateSubmitRecord(submitAppToken, submitTableID, assignID, subWorkName, assetName, processName, managerName, actionAt, isApprove); err != nil {
+		fmt.Printf("[LarkSync/UpdateSubmit] Failed for assign %s: %v\n", assignID, err)
+	} else {
+		fmt.Printf("[LarkSync/UpdateSubmit] Updated Submit record for assign %s\n", assignID)
+	}
+}
+

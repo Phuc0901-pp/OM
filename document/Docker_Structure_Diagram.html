@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Raitek Deployment Structure</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 10px 20px; color: #334155; line-height: 1.2; font-size: 10px; margin: 0; }
+        ul { list-style-type: none; padding-left: 14px; border-left: 1px solid #cbd5e1; margin-top: 2px; margin-bottom: 2px;}
+        li { margin: 2px 0; position: relative; }
+        li::before { content: ''; position: absolute; top: 7px; left: -14px; width: 10px; height: 1px; border-top: 1px solid #cbd5e1; }
+        
+        /* Light mode cho mượt mắt */
+        .masonry { display: flex; flex-wrap: wrap; gap: 15px; zoom: 1; align-items: flex-start; justify-content: center; }
+        .card { background: white; padding: 12px 14px; border-radius: 6px; box-shadow: 0 1px 3px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; break-inside: avoid; page-break-inside: avoid; flex: 1 1 300px; max-width: 450px; box-sizing: border-box; margin-bottom: 15px; }
+        
+        .card.split-card > ul { column-count: 2; column-gap: 10px; }
+        
+        .card > ul { border-left: 0; padding-left: 0; }
+        .card > ul > li::before { display: none; }
+        
+        .item { display: flex; align-items: flex-start; padding: 0px 0px; border-radius: 4px; font-weight: 500;}
+        .item:hover .file-name { font-weight: 600; color: #2563eb; cursor: default;}
+        .icon { font-size: 12px; margin-right: 4px; width: 14px; text-align: center; flex-shrink: 0; margin-top: 0px; }
+        
+        .item-content { display: flex; flex-direction: column; width: 100%;}
+        .file-name { font-weight: 400; color: #0f172a; font-size: 11.5px; transition: color 0.1s; letter-spacing: -0.2px;}
+        .desc { font-family: 'Roboto Mono', 'Consolas', monospace; font-size: 9.5px; color: #d97706; margin-top: 1px; font-style: italic; background-color: #fef3c7; padding: 0px 4px; border-radius: 3px; border-left: 2px solid #f59e0b; display: inline-block; width: fit-content; word-wrap: break-word; letter-spacing: -0.3px;}
+        
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center; margin-bottom: 15px; margin-top: 15px; font-size: 18px; color: #0f172a; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Raitek O&M Deployment Infrastructure (Air-Gapped Containerization)</h2>
+    <div class="masonry">
+<div class="card">
+<div class="item"><span class="icon">🐳</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">ROOT EXECUTION</span></div></div><ul>
+<li><div class="item"><span class="icon">⚙️</span><div class="item-content"><span class="file-name">auto_start.sh</span><span class="desc">// Kịch bản shell tự động hóa (Daemon Bootstrapping)</span></div></div></li>
+<li><div class="item"><span class="icon">📦</span><div class="item-content"><span class="file-name">om_images.tar</span><span class="desc">// Khối nén tệp ảnh hệ thống độc lập (Air-gapped Image Archive)</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">MODULE / configs</span></div></div><ul>
+<li><div class="item"><span class="icon">🔐</span><div class="item-content"><span class="file-name">.env</span><span class="desc">// Biến số môi trường thiết lập hệ thống bảo mật</span></div></div></li>
+<li><div class="item"><span class="icon">🔐</span><div class="item-content"><span class="file-name">.env.example</span><span class="desc">// Quy chuẩn mẫu định nghĩa cấu hình tham số</span></div></div></li>
+</ul></div>
+<div class="card">
+<div class="item"><span class="icon">📁</span><div class="item-content"><span class="file-name" style="font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;">MODULE / deployments</span></div></div><ul>
+<li><div class="item"><span class="icon">🔐</span><div class="item-content"><span class="file-name">.env</span><span class="desc">// Biến số môi trường thiết lập hệ thống bảo mật</span></div></div></li>
+<li><div class="item"><span class="icon">🐳</span><div class="item-content"><span class="file-name">docker-compose.yml</span><span class="desc">// Bản thiết kế điều phối Vi Dịch Vụ (Microservices Orchestration)</span></div></div></li>
+<li><div class="item"><span class="icon">📦</span><div class="item-content"><span class="file-name">om-backend.tar</span><span class="desc">// Gói Container Backend đóng khối tĩnh</span></div></div></li>
+<li><div class="item"><span class="icon">📦</span><div class="item-content"><span class="file-name">om-frontend.tar</span><span class="desc">// Gói Container Frontend đóng khối tĩnh</span></div></div></li>
+</ul></div>
+</div></body></html>

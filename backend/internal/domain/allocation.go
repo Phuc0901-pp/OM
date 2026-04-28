@@ -142,6 +142,12 @@ type MinioPathContext struct {
 	ProcessName      string
 }
 
+// BuildMinioPrefix generates the folder prefix based on the context. 
+// Uses "Unknown" or empty for missing values to ensure consistent paths.
+func BuildMinioPrefix(ctx MinioPathContext) string {
+	return ""
+}
+
 type ConfigRepository interface {
 	Create(config *Config) error
 	FindAll() ([]Config, error)

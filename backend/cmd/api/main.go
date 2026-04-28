@@ -66,6 +66,15 @@ func main() {
 		log.Fatal("Migration failed", zap.Error(err))
 	}
 
+	// 4.5 Reset all user statuses to OFFLINE (0) on server startup
+	// Because if the server was killed aggressively, WebSocket disconnect events wouldn't fire.
+	// Active clients will auto-reconnect within 5 seconds and set themselves back to ONLINE (1)
+	if err := db.Exec("UPDATE users SET status_user = 0").Error; err != nil {
+		log.Warn("Failed to reset user statuses on startup", zap.Error(err))
+	} else {
+		log.Info("Successfully reset all user statuses to offline globally")
+	}
+
 	// 5. Build Dependency Injection Container
 	container := di.BuildContainer(cfg, db)
 

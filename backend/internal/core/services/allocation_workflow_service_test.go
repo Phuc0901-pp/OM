@@ -63,7 +63,7 @@ func TestApproveDetail(t *testing.T) {
 	// No panic broadcast func
 	broadcastFn := func(msg []byte) {}
 
-	svc := NewAllocationWorkflowService(db, mockRepo, nil, nil, broadcastFn, config.Config{})
+	svc := NewAllocationWorkflowService(db, mockRepo, nil, broadcastFn, config.Config{})
 
 	id := uuid.New()
 	mockRepo.Details[id.String()] = &domain.DetailAssign{
@@ -105,7 +105,7 @@ func TestRejectDetail(t *testing.T) {
 		Details: make(map[string]*domain.DetailAssign),
 	}
 
-	svc := NewAllocationWorkflowService(db, mockRepo, nil, nil, func(msg []byte) {}, config.Config{})
+	svc := NewAllocationWorkflowService(db, mockRepo, nil, func(msg []byte) {}, config.Config{})
 
 	id := uuid.New()
 	mockRepo.Details[id.String()] = &domain.DetailAssign{
@@ -142,7 +142,7 @@ func TestBulkUpdateStatus(t *testing.T) {
 	mockRepo.Details[id1.String()] = &domain.DetailAssign{ID: id1, ApprovalAt: datatypes.JSON("[]")}
 	mockRepo.Details[id2.String()] = &domain.DetailAssign{ID: id2, ApprovalAt: datatypes.JSON("[]")}
 	
-	svc := NewAllocationWorkflowService(db, mockRepo, nil, nil, func(m []byte) {}, config.Config{})
+	svc := NewAllocationWorkflowService(db, mockRepo, nil, func(m []byte) {}, config.Config{})
 	
 	result := svc.BulkUpdateStatus([]string{id1.String(), id2.String(), "invalid-uuid"}, 1, "Bulk ok", "", "")
 	

@@ -108,6 +108,33 @@ services:
     networks:
       - raitek_server
 
+  # --- Sync Agent: Kéo file PDF mới từ MinIO về Ổ Drive Công ty ---
+  sync-agent:
+    image: raitek/om-sync-agent:latest
+    container_name: cmms_sync_agent
+    restart: unless-stopped
+    env_file:
+      - ../configs/.env
+    environment:
+      MINIO_ENDPOINT: minio:2603
+      MINIO_BUCKET: ${MINIO_BUCKET:-dev}
+      # SYNC_INTERVAL: Tần suất đồng bộ tính bằng giây
+      # 600  = 10 phút (mặc định)
+      # 300  = 5 phút (nếu mối trườ ng sản xuất muốn nhanh hơn)
+      # 3600 = 1 tiếng (cho môi trườ ng thấp tải)
+      SYNC_INTERVAL: 600
+    volumes:
+      - /mnt/nas_raitek:/mnt/nas_drive
+    depends_on:
+      - minio
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - raitek_server
+
 networks:
   raitek_server:
     external: true
@@ -117,3 +144,6 @@ volumes:
   pgdata_prod:
   miniodata_prod:
   rabbitmqdata_prod:
+  # nas_drive: Volume lưu trữ các file PDF Sync Agent kéo về từ MinIO.
+  # Khi chạy production, thay volume này bằng bind mount vào Ổ NAS.
+  nas_drive:

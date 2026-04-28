@@ -15,7 +15,7 @@ import QuickActionBar from '../../../components/environment/QuickActionBar';
 import CheckInModal, { CheckInPhotos } from '../../../components/CheckInModal';
 
 // Imported Components
-import GuidePopup from './components/GuidePopup';
+import GuideLineModal from '../../manager/management/projectSetup/components/GuideLineModal';
 import ImagePreviewModal from './components/ImagePreviewModal';
 import OfflineSyncStatus from '../../../components/environment/OfflineSyncStatus';
 import CameraManager from '../../../components/environment/CameraManager';
@@ -751,18 +751,18 @@ const EnvironmentPageContent = () => {
     );
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 p-4 md:p-6 lg:p-8 transition-colors duration-500">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 p-4 md:p-6 lg:p-8 transition-colors duration-500">
             {/* Offline & Sync Status */}
             <OfflineSyncStatus />
 
             {/* Premium Header */}
-            <div className="relative overflow-hidden bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-xl dark:shadow-2xl border border-white/20 dark:border-white/5 transition-colors mb-6">
+            <div className="relative overflow-hidden bg-white/80 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-xl border border-white/20 transition-colors mb-6">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-indigo-400/20 to-violet-600/20 rounded-full blur-3xl -z-10"></div>
                 <div className="relative z-10 flex flex-col gap-1">
                     <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 bg-clip-text text-transparent">
                         {t('sidebar.environment')}
                     </h1>
-                    <p className="text-gray-600 dark:text-slate-400 font-medium">Quản lý và thực hiện công việc được phân công</p>
+                    <p className="text-gray-600 font-medium">Quản lý và thực hiện công việc được phân công</p>
                 </div>
             </div>
 
@@ -823,7 +823,7 @@ const EnvironmentPageContent = () => {
                 draftNotes={draftNotes}
                 editingTasks={editingTasks}
                 submittingTasks={submittingTasks}
-                onGuide={(title, text, images) => setGuidePopup({ title, text, images })}
+                onOpenGuide={(subWorkId, subWorkName, workName) => setGuidePopup({ subWorkId, subWorkName, workName })}
                 onTaskEdit={(tid: string) => setEditingTasks(prev => new Set(prev).add(tid))}
                 onTaskSubmit={(tid: string, overrideNote?: string) => {
                     handleSubmitDraft(tid, selectedAssignId || '', overrideNote).catch(console.error);
@@ -859,17 +859,26 @@ const EnvironmentPageContent = () => {
                 watermarkInfo={getWatermarkInfo()}
             />
 
-            <AnimatePresence>
-                {guidePopup && <GuidePopup key="guide-popup" data={guidePopup} onClose={() => setGuidePopup(null)} />}
-            </AnimatePresence>
-
             {ReactDOM.createPortal(
-                <AnimatePresence>
-                    {viewImage && <ImagePreviewModal key="image-preview-modal" viewImage={viewImage} onClose={() => setViewImage(null)} onChangeIndex={(idx) => setViewImage(prev => prev ? { ...prev, currentIndex: idx } : null)} />}
-                </AnimatePresence>,
+                <>
+                    <AnimatePresence>
+                        {guidePopup && (
+                            <GuideLineModal
+                                key="guide-popup"
+                                subWorkId={guidePopup.subWorkId}
+                                subWorkName={guidePopup.subWorkName}
+                                workName={guidePopup.workName}
+                                onClose={() => setGuidePopup(null)}
+                                readOnly={true}
+                            />
+                        )}
+                    </AnimatePresence>
+                    <AnimatePresence>
+                        {viewImage && <ImagePreviewModal key="image-preview-modal" viewImage={viewImage} onClose={() => setViewImage(null)} onChangeIndex={(idx) => setViewImage(prev => prev ? { ...prev, currentIndex: idx } : null)} />}
+                    </AnimatePresence>
+                </>,
                 document.body
             )}
-
             {/* Check-in / Check-out Modals */}
             <CheckInModal
                 isOpen={showCheckInModal}

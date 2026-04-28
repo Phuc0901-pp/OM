@@ -5,16 +5,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/phuc/cmms-backend/internal/core/services"
 )
 
 type LarkHandler struct {
-	larkService *services.LarkService
+	larkService   *services.LarkService
+	reportPDFSvc  *services.ReportPDFService
 }
 
-func NewLarkHandler(service *services.LarkService) *LarkHandler {
+func NewLarkHandler(service *services.LarkService, reportPDFSvc *services.ReportPDFService) *LarkHandler {
 	return &LarkHandler{
-		larkService: service,
+		larkService:  service,
+		reportPDFSvc: reportPDFSvc,
 	}
 }
 
@@ -27,6 +30,7 @@ func (h *LarkHandler) PushReportLink(c *gin.Context) {
 		Template   string `json:"template"`
 		ReportLink string `json:"report_link" binding:"required"`
 		Submitter  string `json:"submitter"`
+		ReportID   string `json:"report_id"` // Optional: triggers auto PDF generation
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,6 +55,15 @@ func (h *LarkHandler) PushReportLink(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// ── Pipeline thứ 2: Tự động tạo PDF và lưu vào MinIO ──────────────────
+	// Chạy ngầm (non-blocking). Người dùng nhận phản hồi "thành công" ngay lập tức.
+	if req.ReportID != "" && h.reportPDFSvc != nil {
+		reportUID, parseErr := uuid.Parse(req.ReportID)
+		if parseErr == nil {
+			h.reportPDFSvc.GenerateAndUploadAsync(reportUID)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully pushed to Lark Base"})

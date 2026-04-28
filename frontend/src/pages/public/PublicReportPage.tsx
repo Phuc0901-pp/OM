@@ -105,6 +105,7 @@ const PublicReportPage: React.FC = () => {
     const subWorkId = searchParams.get('sub');
     const assetId = searchParams.get('asset');
     const isRejectReport = searchParams.get('type') === 'reject';
+    const isSubmitReport = searchParams.get('type') === 'submit';
 
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -200,17 +201,17 @@ const PublicReportPage: React.FC = () => {
             <div className="max-w-4xl mx-auto space-y-6">
                 {/* Report Header */}
                 <div className="relative rounded-2xl overflow-hidden shadow-xl">
-                    <div className={`px-8 py-6 ${isRejectReport ? 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500' : 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600'}`}>
+                    <div className={`px-8 py-6 ${isRejectReport ? 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500' : isSubmitReport ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-400' : 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600'}`}>
                         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_70%_50%,white,transparent)]"></div>
                         <div className="relative">
-                            <div className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isRejectReport ? 'text-rose-100' : 'text-indigo-200'}`}>
-                                {isRejectReport ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                                {isRejectReport ? 'Báo cáo Sửa chữa' : 'Báo cáo ngắn'}
+                            <div className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isRejectReport ? 'text-rose-100' : isSubmitReport ? 'text-amber-100' : 'text-indigo-200'}`}>
+                                {isRejectReport ? <AlertCircle className="w-3.5 h-3.5" /> : isSubmitReport ? <Clock className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                {isRejectReport ? 'Báo cáo Sửa chữa' : isSubmitReport ? 'Báo cáo Chờ duyệt' : 'Báo cáo ngắn'}
                             </div>
                             <h1 className="text-2xl font-black text-white tracking-tight flex items-center flex-wrap gap-2">
                                 {template?.name || modelProject?.name || '—'}
-                                <span className={`w-1.5 h-1.5 rounded-full opacity-70 ${isRejectReport ? 'bg-rose-200' : 'bg-indigo-300'}`}></span>
-                                <span className={isRejectReport ? 'text-rose-100' : 'text-indigo-100'}>{subWork?.name || '—'}</span>
+                                <span className={`w-1.5 h-1.5 rounded-full opacity-70 ${isRejectReport ? 'bg-rose-200' : isSubmitReport ? 'bg-amber-200' : 'bg-indigo-300'}`}></span>
+                                <span className={isRejectReport ? 'text-rose-100' : isSubmitReport ? 'text-amber-50' : 'text-indigo-100'}>{subWork?.name || '—'}</span>
                                 <span className="text-sm font-bold bg-black/15 text-white px-3 py-1 rounded-lg border border-white/20 ml-1">
                                     {work?.name || '—'}
                                 </span>
@@ -236,9 +237,9 @@ const PublicReportPage: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto ${isRejectReport ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
-                            {isRejectReport ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                            {isRejectReport ? 'Bị từ chối' : 'Đã hoàn tất'}
+                        <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto ${isRejectReport ? 'bg-rose-50 border-rose-100 text-rose-700' : isSubmitReport ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+                            {isRejectReport ? <AlertCircle className="w-4 h-4" /> : isSubmitReport ? <Clock className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                            {isRejectReport ? 'Bị từ chối' : isSubmitReport ? 'Chờ duyệt' : 'Đã hoàn tất'}
                         </div>
                     </div>
 
@@ -308,23 +309,44 @@ const PublicReportPage: React.FC = () => {
                         </div>
 
                         {/* Approver/Rejector Card */}
-                        <div className={`relative p-3.5 rounded-xl border group h-full ${isRejectReport ? 'border-amber-200/60 bg-amber-50/50' : 'border-emerald-200/60 bg-emerald-50/50'}`}>
-                            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                                {isRejectReport ? <AlertCircle className="w-12 h-12 text-amber-600" /> : <CheckCircle2 className="w-12 h-12 text-emerald-600" />}
+                        {!isSubmitReport && (
+                            <div className={`relative p-3.5 rounded-xl border group h-full ${isRejectReport ? 'border-amber-200/60 bg-amber-50/50' : 'border-emerald-200/60 bg-emerald-50/50'}`}>
+                                <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                                    {isRejectReport ? <AlertCircle className="w-12 h-12 text-amber-600" /> : <CheckCircle2 className="w-12 h-12 text-emerald-600" />}
+                                </div>
+                                <div className="relative z-10">
+                                    <div className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${isRejectReport ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                        {isRejectReport ? 'Người từ chối' : 'Người duyệt'}
+                                    </div>
+                                    <div className={`text-[13px] font-bold mb-2 leading-snug ${isRejectReport ? 'text-amber-950' : 'text-emerald-950'}`}>
+                                        {approverNames.join(', ') || '—'}
+                                    </div>
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-bold bg-white/60 px-2 py-1 inline-flex rounded border shadow-sm ${isRejectReport ? 'text-amber-700 border-amber-200' : 'text-emerald-700 border-emerald-200'}`}>
+                                        <CalendarCheck className="w-3.5 h-3.5" />
+                                        {isRejectReport ? 'Từ chối lúc' : 'Duyệt'}: {formatDateSafe(isRejectReport ? targetDetail?.rejected_at : targetDetail?.approval_at)}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="relative z-10">
-                                <div className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${isRejectReport ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                    {isRejectReport ? 'Người từ chối' : 'Người duyệt'}
+                        )}
+                        {isSubmitReport && (
+                            <div className="relative p-3.5 rounded-xl border group h-full border-amber-200/60 bg-amber-50/50">
+                                <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                                    <Clock className="w-12 h-12 text-amber-600" />
                                 </div>
-                                <div className={`text-[13px] font-bold mb-2 leading-snug ${isRejectReport ? 'text-amber-950' : 'text-emerald-950'}`}>
-                                    {approverNames.join(', ') || '—'}
-                                </div>
-                                <div className={`flex items-center gap-1.5 text-[11px] font-bold bg-white/60 px-2 py-1 inline-flex rounded border shadow-sm ${isRejectReport ? 'text-amber-700 border-amber-200' : 'text-emerald-700 border-emerald-200'}`}>
-                                    <CalendarCheck className="w-3.5 h-3.5" />
-                                    {isRejectReport ? 'Từ chối lúc' : 'Duyệt'}: {formatDateSafe(isRejectReport ? targetDetail?.rejected_at : targetDetail?.approval_at)}
+                                <div className="relative z-10">
+                                    <div className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-700">
+                                        Người duyệt
+                                    </div>
+                                    <div className="text-[13px] font-bold mb-2 leading-snug text-amber-950">
+                                        Chưa phân công
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[11px] font-bold bg-white/60 px-2 py-1 inline-flex rounded border shadow-sm text-amber-700 border-amber-200">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        Trạng thái: Đang chờ duyệt
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
 
@@ -413,7 +435,7 @@ const PublicReportPage: React.FC = () => {
 
                 {/* Footer */}
                 <div className="text-center text-xs text-slate-400 py-4">
-                    Báo cáo được tạo bởi hệ thống <span className="font-bold text-slate-500">Raitek</span> · Version 6.3.1
+                    Báo cáo được tạo bởi hệ thống <span className="font-bold text-slate-500">Raitek</span> · Version 6.4.3
                 </div>
             </div>
 

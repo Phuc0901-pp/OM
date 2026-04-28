@@ -10,10 +10,10 @@ export const ASSET_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24
 
 // Helper to create data URL
 export const createSvgDataUrl = (svgString: string, color: string = 'white'): string => {
-    // Inject color if needed, or assume SVG uses currentColor and we wrap it or replace
-    // The provided SVGs use stroke="currentColor". We can replace it or add style.
-    // For watermark (Canvas), we usually want White icons with maybe shadow.
-    // Let's force stroke="white" for simplicity in the Data URL generation.
-    const coloredSvg = svgString.replace(/currentColor/g, color);
-    return `data:image/svg+xml;base64,${btoa(coloredSvg)}`;
+ // Inject color if needed, or assume SVG uses currentColor and we wrap it or replace
+ // The provided SVGs use stroke="currentColor". We can replace it or add style.
+ // For watermark (Canvas), we usually want White icons with maybe shadow.
+ // Let's force stroke="white" for simplicity in the Data URL generation.
+ const coloredSvg = svgString.replace(/currentColor/g, color);
+ return `data:image/svg+xml;base64,${btoa(coloredSvg)}`;
 };
